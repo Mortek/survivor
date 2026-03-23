@@ -118,6 +118,8 @@ func _ready() -> void:
 	# ── Pause button: top-right, row 2 (below health bar) ──
 	pause_btn.custom_minimum_size = Vector2(48, 26)
 	pause_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	pause_btn.z_index      = 31
+	pause_btn.z_as_relative = false
 	pause_btn.set_anchor_and_offset(SIDE_LEFT,   1.0, -54.0)
 	pause_btn.set_anchor_and_offset(SIDE_TOP,    0.0,  26.0)
 	pause_btn.set_anchor_and_offset(SIDE_RIGHT,  1.0,  -6.0)
