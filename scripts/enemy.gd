@@ -62,7 +62,7 @@ func _ready() -> void:
 	_base_color     = cfg["col"]
 	sprite.modulate = _base_color
 	if not sprite.texture:
-		sprite.texture = _solid_tex(28)
+		sprite.texture = _shape_tex(enemy_type)
 
 ## Call after instantiation, before placing in the world.
 func activate(player: Node2D, wave_multiplier: float) -> void:
@@ -199,7 +199,65 @@ func _on_damage_area_body_entered(body: Node) -> void:
 	if body.is_in_group("player") and body.has_method("take_damage"):
 		body.take_damage(dmg)
 
-static func _solid_tex(size: int) -> ImageTexture:
+## Returns a distinct white-on-transparent shape texture for each enemy type.
+## Colour is applied separately via sprite.modulate.
+static func _shape_tex(type: int) -> ImageTexture:
+	match type:
+		Type.BASIC:    return _circle_tex(26)
+		Type.FAST:     return _diamond_tex(14, 22)
+		Type.TANK:     return _circle_tex(34)
+		Type.BOSS:     return _circle_tex(26)   # Boss uses sprite.scale = 2.5
+		Type.SPLITTER: return _triangle_tex(26)
+		Type.EXPLODER: return _cross_tex(22)
+		_:             return _circle_tex(26)
+
+static func _circle_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color.WHITE)
+	img.fill(Color.TRANSPARENT)
+	var cx := (size - 1) * 0.5
+	var cy := (size - 1) * 0.5
+	var r2 := (size * 0.5 - 0.5) * (size * 0.5 - 0.5)
+	for y in size:
+		for x in size:
+			var dx := x - cx
+			var dy := y - cy
+			if dx * dx + dy * dy <= r2:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+static func _diamond_tex(w: int, h: int) -> ImageTexture:
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (w - 1) * 0.5
+	var cy := (h - 1) * 0.5
+	for y in h:
+		for x in w:
+			var nx := absf(x - cx) / (cx + 0.001)
+			var ny := absf(y - cy) / (cy + 0.001)
+			if nx + ny <= 1.0:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+static func _triangle_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	for y in size:
+		var t      := float(y) / maxf(size - 1, 1)
+		var half_w := t * (size * 0.5)
+		var xs     := int(size * 0.5 - half_w)
+		var xe     := int(size * 0.5 + half_w)
+		for x in range(xs, xe + 1):
+			if x >= 0 and x < size:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+static func _cross_tex(size: int) -> ImageTexture:
+	var img       := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var half      := size / 2
+	var thickness := maxi(size / 5, 2)
+	for y in size:
+		for x in size:
+			if abs(y - half) <= thickness or abs(x - half) <= thickness:
+				img.set_pixel(x, y, Color.WHITE)
 	return ImageTexture.create_from_image(img)

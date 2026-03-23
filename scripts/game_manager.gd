@@ -99,7 +99,7 @@ func add_xp(amount: int) -> void:
 func _level_up() -> void:
 	current_xp -= xp_to_next
 	current_level += 1
-	xp_to_next    = int(xp_to_next * 1.35)
+	xp_to_next    = int(xp_to_next * 1.28)
 	level_changed.emit(current_level)
 	_check_achievements()
 	state = State.LEVEL_UP
@@ -136,7 +136,7 @@ func advance_wave() -> void:
 	_check_achievements()
 
 func get_wave_multiplier() -> float:
-	return 1.0 + (wave - 1) * 0.18
+	return 1.0 + (wave - 1) * 0.14
 
 # ── Coins & Kills ─────────────────────────────────────────────────────────────
 func add_coin(amount: int = 1) -> void:

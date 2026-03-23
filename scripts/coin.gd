@@ -17,8 +17,18 @@ var _age: float       = 0.0
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	if not sprite.texture:
-		var img := Image.create(10, 10, false, Image.FORMAT_RGBA8)
-		img.fill(Color(0.2, 1.0, 0.5))
+		# Small circle gem
+		var size := 10
+		var img  := Image.create(size, size, false, Image.FORMAT_RGBA8)
+		img.fill(Color.TRANSPARENT)
+		var cx := (size - 1) * 0.5
+		var r2 := (size * 0.5 - 0.5) * (size * 0.5 - 0.5)
+		for y in size:
+			for x in size:
+				var dx := x - cx
+				var dy := y - cx
+				if dx * dx + dy * dy <= r2:
+					img.set_pixel(x, y, Color(0.2, 1.0, 0.5))
 		sprite.texture = ImageTexture.create_from_image(img)
 
 ## Called right after instantiation

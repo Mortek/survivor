@@ -8,7 +8,7 @@ signal enemy_spawned(enemy: Node)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 @export var enemy_scene:           PackedScene
-@export var wave_duration:         float = 22.0
+@export var wave_duration:         float = 30.0
 @export var base_spawn_interval:   float = 1.5
 @export var max_on_screen:         int   = 45
 

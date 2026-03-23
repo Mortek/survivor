@@ -84,7 +84,9 @@ Game  (Node2D)                          ← script: scripts/game.gd
 ├── World  (Node2D)
 │   ├── Background  (Sprite2D)          ← tiling background texture, centered at 0,0
 │   ├── Enemies  (Node2D)               ← empty container
-│   └── Coins  (Node2D)                 ← empty container
+│   ├── Coins  (Node2D)                 ← empty container
+│   └── FX  (Node2D)                    ← empty container for damage numbers + particles
+│                                          (created automatically at runtime if absent)
 │
 ├── Player  (CharacterBody2D)           ← script: scripts/player.gd
 │   ├── Sprite2D                        ← player sprite (16×16 or 32×32)
@@ -177,9 +179,14 @@ Or: Select Sprite2D → drag a color from the color picker to Texture slot (Godo
 
 *Project → Project Settings → Autoload*
 
-| Name          | Path                         | Singleton |
-|---------------|------------------------------|-----------|
-| GameManager   | res://scripts/game_manager.gd | ✓         |
+| Name          | Path                           | Singleton |
+|---------------|--------------------------------|-----------|
+| GameManager   | res://scripts/game_manager.gd  | ✓         |
+| AudioManager  | res://scripts/audio_manager.gd | ✓         |
+| MetaManager   | res://scripts/meta_manager.gd  | ✓         |
+
+AudioManager synthesises all sounds procedurally at startup — no audio files needed.
+MetaManager persists earned coins across runs using `user://meta.dat`.
 
 ---
 
@@ -261,10 +268,26 @@ Once you have AI-generated sprites (PNG with transparency):
 - [ ] Camera follows player
 - [ ] Enemies spawn from edges and chase player
 - [ ] Bullets fire at nearest enemy, enemies take damage and die
+- [ ] **Floating damage numbers** appear on every hit
+- [ ] **Death particle burst** plays when an enemy dies
 - [ ] Coins spawn on enemy death and attract to player
 - [ ] XP gained, level-up menu appears with 3 choices
+- [ ] **Yellow screen flash + jingle** plays on level-up
 - [ ] Upgrade applies (e.g., Multishot fires 2 bullets)
+- [ ] **Blade Arts** upgrade spawns melee ring around player
+- [ ] **Orbital Strike** upgrade spawns orbiting boomerang
+- [ ] **Armor / Vampirism / Regeneration** upgrades appear and work
+- [ ] **Crimson Reaper** evolution appears when melee Lv3 + Vampirism taken
+- [ ] **Death Orbit** evolution appears when boomerang Lv3 + 3 projectiles taken
 - [ ] Health decreases on enemy contact, screen shakes
-- [ ] Game Over screen shows on death, Restart works
+- [ ] **Armor reduces** incoming damage (take Iron Skin, verify lower damage)
+- [ ] **Lifesteal** heals on kill (take Vampirism, kill enemies)
+- [ ] **Regen** ticks HP up over time
+- [ ] **Boss spawns** every 5 waves (large purple enemy, charges periodically)
+- [ ] **Red flash** on boss wave arrival
+- [ ] Kill counter increments in HUD
+- [ ] Game Over screen shows Time / Level / **Kills / Wave / Coins earned**
+- [ ] Restart works
 - [ ] Pause button works
 - [ ] Wave number increases every 22 seconds
+- [ ] Coins persist across runs (MetaManager — check user://meta.dat after restart)
