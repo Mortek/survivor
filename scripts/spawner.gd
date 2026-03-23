@@ -1,27 +1,37 @@
 extends Node
 ## Spawner – instantiates enemies on a timer, scaling with waves.
-## Waves advance every `wave_duration` seconds; each wave increases spawn rate + difficulty.
+## Supports BASIC, FAST, TANK, BOSS, SPLITTER, and EXPLODER types.
+## Any enemy has an 8% chance to be Elite (3× HP, bonus XP).
 
 # ── Signals ───────────────────────────────────────────────────────────────────
-signal enemy_spawned(enemy: Node)   # game.gd connects per-enemy signals here
+signal enemy_spawned(enemy: Node)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-@export var enemy_scene: PackedScene
-@export var wave_duration: float       = 22.0
-@export var base_spawn_interval: float = 1.5
-@export var max_on_screen: int         = 45
+@export var enemy_scene:           PackedScene
+@export var wave_duration:         float = 22.0
+@export var base_spawn_interval:   float = 1.5
+@export var max_on_screen:         int   = 45
+
+# Enemy type shorthands — must be var, not const (enum values aren't compile-time literals in GDScript)
+var ENEMY_TYPE_BASIC    := Enemy.Type.BASIC
+var ENEMY_TYPE_FAST     := Enemy.Type.FAST
+var ENEMY_TYPE_TANK     := Enemy.Type.TANK
+var ENEMY_TYPE_BOSS     := Enemy.Type.BOSS
+var ENEMY_TYPE_SPLITTER := Enemy.Type.SPLITTER
+var ENEMY_TYPE_EXPLODER := Enemy.Type.EXPLODER
+
+const ELITE_CHANCE := 0.08
 
 # ── State ─────────────────────────────────────────────────────────────────────
-var _player: Node2D  = null
-var _container: Node = null
-var _spawn_timer: float = 0.0
-var _wave_timer:  float = 0.0
+var _player:        Node2D  = null
+var _container:     Node    = null
+var _spawn_timer:   float   = 0.0
+var _wave_timer:    float   = 0.0
 var _spawn_interval: float
 
 func _ready() -> void:
 	_spawn_interval = base_spawn_interval
 
-## Call from game.gd after scene is ready
 func setup(player: Node2D, container: Node) -> void:
 	_player    = player
 	_container = container
@@ -43,11 +53,18 @@ func _process(delta: float) -> void:
 
 func _next_wave() -> void:
 	GameManager.advance_wave()
-	# Increase spawn frequency, minimum 0.3s between spawns
 	_spawn_interval = maxf(base_spawn_interval / (1.0 + GameManager.wave * 0.12), 0.30)
-	# Burst spawn to feel the wave pressure
-	for _i in 6:
-		_try_spawn()
+
+	if GameManager.wave % 5 == 0:
+		_spawn_boss()
+	else:
+		# Normal wave burst
+		for _i in 6:
+			_try_spawn()
+
+	# Offer a curse right after boss waves (wave 6, 11, 16...)
+	if GameManager.wave >= 6 and (GameManager.wave - 1) % 5 == 0:
+		GameManager.try_offer_curse()
 
 # ── Spawning ──────────────────────────────────────────────────────────────────
 func _try_spawn() -> void:
@@ -55,38 +72,62 @@ func _try_spawn() -> void:
 		return
 	if get_tree().get_nodes_in_group("enemies").size() >= max_on_screen:
 		return
+	var type_int := _pick_type()
+	var elite    := randf() < ELITE_CHANCE
+	_spawn_enemy(type_int, GameManager.get_wave_multiplier(), elite)
 
+func _spawn_boss() -> void:
+	if not _player or not _container or not enemy_scene:
+		return
+	_spawn_enemy(ENEMY_TYPE_BOSS, GameManager.get_wave_multiplier(), false)
+
+## Public – used by game.gd to spawn SPLITTER children at a given position.
+func spawn_at(type_int: int, pos: Vector2, wave_mult: float, elite: bool = false) -> void:
+	if not _player or not _container or not enemy_scene:
+		return
+	_spawn_enemy(type_int, wave_mult, elite, pos)
+
+func _spawn_enemy(type_int: int, wave_mult: float, elite: bool, override_pos: Vector2 = Vector2.INF) -> void:
 	var enemy: Node = enemy_scene.instantiate()
-	# Set type BEFORE add_child so _ready() → _apply_config() uses the correct type
-	enemy.enemy_type = _pick_type()
+	enemy.enemy_type = type_int
+	enemy.is_elite   = elite
 	_container.add_child(enemy)
-	enemy.global_position = _edge_position()
-	enemy.activate(_player, GameManager.get_wave_multiplier())
-	# Emit so game.gd can connect the enemy's died signal for coin drops
+	enemy.global_position = override_pos if override_pos != Vector2.INF else _edge_position()
+	enemy.activate(_player, wave_mult)
 	enemy_spawned.emit(enemy)
 
 func _pick_type() -> int:
 	var w := GameManager.wave
 	var r := randf()
 	if w <= 2:
-		return 0                                   # BASIC only
-	elif w <= 5:
-		return 0 if r < 0.72 else 1               # mostly BASIC, some FAST
+		# Only basics
+		return ENEMY_TYPE_BASIC
+	elif w <= 4:
+		# Basics and fasts
+		if r < 0.72: return ENEMY_TYPE_BASIC
+		else:        return ENEMY_TYPE_FAST
+	elif w <= 7:
+		# Introduce tanks and splitters
+		if   r < 0.45: return ENEMY_TYPE_BASIC
+		elif r < 0.72: return ENEMY_TYPE_FAST
+		elif r < 0.88: return ENEMY_TYPE_TANK
+		else:          return ENEMY_TYPE_SPLITTER
 	else:
-		if   r < 0.48: return 0                   # BASIC
-		elif r < 0.78: return 1                   # FAST
-		else:          return 2                   # TANK
+		# All types, exploders appear at wave 8+
+		if   r < 0.35: return ENEMY_TYPE_BASIC
+		elif r < 0.58: return ENEMY_TYPE_FAST
+		elif r < 0.73: return ENEMY_TYPE_TANK
+		elif r < 0.87: return ENEMY_TYPE_SPLITTER
+		else:          return ENEMY_TYPE_EXPLODER
 
 func _edge_position() -> Vector2:
-	## Spawn just outside the current viewport edges.
-	var cam := get_viewport().get_camera_2d()
+	var cam     := get_viewport().get_camera_2d()
 	var cam_pos := cam.global_position if cam else Vector2.ZERO
-	var vp     := get_viewport().get_visible_rect().size
-	var hw     := vp.x * 0.5 + 90.0
-	var hh     := vp.y * 0.5 + 90.0
-
+	var vp      := get_viewport().get_visible_rect().size
+	var hw      := vp.x * 0.5 + 90.0
+	var hh      := vp.y * 0.5 + 90.0
 	match randi() % 4:
-		0: return cam_pos + Vector2(randf_range(-hw, hw), -hh)   # top
-		1: return cam_pos + Vector2(randf_range(-hw, hw),  hh)   # bottom
-		2: return cam_pos + Vector2(-hw, randf_range(-hh, hh))   # left
-		_: return cam_pos + Vector2( hw, randf_range(-hh, hh))   # right
+		0: return cam_pos + Vector2(randf_range(-hw, hw), -hh)
+		1: return cam_pos + Vector2(randf_range(-hw, hw),  hh)
+		2: return cam_pos + Vector2(-hw, randf_range(-hh, hh))
+		_: return cam_pos + Vector2( hw, randf_range(-hh, hh))

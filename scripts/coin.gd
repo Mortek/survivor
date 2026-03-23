@@ -41,6 +41,10 @@ func _process(delta: float) -> void:
 		# Gentle bob in place
 		sprite.position.y = sin(_age * BOB_SPEED) * BOB_AMPLITUDE
 
+## Called by the magnet orb to instantly pull this coin to the player.
+func attract_magnet() -> void:
+	_attracted = true
+
 func _on_body_entered(body: Node) -> void:
 	if body.is_in_group("player"):
 		GameManager.add_xp(xp_value)
