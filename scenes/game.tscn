@@ -151,16 +151,13 @@ offset_bottom = 76.0
 text = "Lv 1"
 theme_override_font_sizes/font_size = 14
 
-; Coin label (top right area)
+; Coin label (below kills label)
 [node name="CoinLabel" type="Label" parent="UI/HUD"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -130.0
-offset_top = 10.0
-offset_right = -10.0
-offset_bottom = 34.0
-horizontal_alignment = 2
-text = "0"
+offset_left = 10.0
+offset_top = 96.0
+offset_right = 200.0
+offset_bottom = 116.0
+text = "🪙 0"
 theme_override_font_sizes/font_size = 18
 
 ; Pause Button (top right corner)
