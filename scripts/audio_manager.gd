@@ -21,6 +21,11 @@ func _ready() -> void:
 	_add("curse_accept",  _curse_chord())
 	_add("shield_break",  _sweep(1200.0, 400.0, 0.18, 0.30))
 	_add("boss_music",    _boss_sting())
+	_add("coin_attract",  _sine(880.0,  0.08, 0.22, 4.0))
+	_add("boss_intro",    _sweep(60.0,  200.0, 0.50, 0.55))
+	_add("dash",          _sweep(400.0, 800.0, 0.12, 0.30))
+	_add("slow_hit",      _sweep(600.0, 200.0, 0.20, 0.28))
+	_add("burn_hit",      _noise_burst())
 
 func play(sound: String) -> void:
 	if _players.has(sound) and not _players[sound].playing:
@@ -109,6 +114,18 @@ func _curse_chord() -> AudioStreamWAV:
 		_write_sample(d, i, sin(TAU * notes[idx] * t) * 0.35 * fade)
 	return _make_wav(d)
 
+func _noise_burst() -> AudioStreamWAV:
+	var dur := 0.10
+	var n   := int(RATE * dur)
+	var d   := PackedByteArray(); d.resize(n * 2)
+	var inv := 1.0 / maxf(dur, 0.001)
+	for i in n:
+		var t    := float(i) / RATE
+		var noise := randf_range(-1.0, 1.0) * 0.6
+		var tone  := sin(TAU * 180.0 * t) * 0.3
+		_write_sample(d, i, (noise + tone) * 0.30 * (1.0 - t * inv * 0.5))
+	return _make_wav(d)
+
 ## Short dramatic sting for boss wave.
 func _boss_sting() -> AudioStreamWAV:
 	var notes := [110.0, 87.31, 73.42, 65.41]
@@ -121,3 +138,9 @@ func _boss_sting() -> AudioStreamWAV:
 		var idx := mini(int(t * inv), notes.size() - 1)
 		_write_sample(d, i, sin(TAU * notes[idx] * t) * 0.45 * (1.0 - fmod(t, dur) * inv))
 	return _make_wav(d)
+
+func set_master_volume(linear: float) -> void:
+	AudioServer.set_bus_volume_db(0, linear_to_db(clampf(linear, 0.001, 1.0)))
+
+func get_master_volume() -> float:
+	return db_to_linear(AudioServer.get_bus_volume_db(0))

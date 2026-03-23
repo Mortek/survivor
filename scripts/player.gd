@@ -30,6 +30,16 @@ var _lightning:  LightningChain = null
 var _regen_acc: float = 0.0
 var _aura_acc:  float = 0.0
 const AURA_INTERVAL := 0.8
+
+# ── Dash ──────────────────────────────────────────────────────────────────────
+var _dash_cooldown_remaining: float = 0.0
+var _dashing:                 bool  = false
+var _dash_dir:                Vector2 = Vector2.ZERO
+var _dash_elapsed:            float = 0.0
+const DASH_DURATION    := 0.18
+const DASH_SPEED_MULT  := 3.5
+const DASH_COOLDOWN    := 2.5
+signal dash_ready(ready: bool)
 const AURA_RADIUS   := 100.0
 const AURA_DMG_MULT := 0.4   # fraction of player damage
 
@@ -50,6 +60,7 @@ func _ready() -> void:
 	_cache_stats()
 	if not sprite.texture:
 		sprite.texture = _solid_tex(32, 32, Color(0.27, 0.47, 1.0))
+	GameManager.level_changed.connect(func(_l: int) -> void: Input.vibrate_handheld(60))
 
 # ── Movement ──────────────────────────────────────────────────────────────────
 func _physics_process(delta: float) -> void:
@@ -57,9 +68,23 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	var final_dir: Vector2 = move_dir if move_dir.length() > 0.1 else _keyboard_dir()
-	velocity = final_dir * _cached_speed
+
+	# Dash cooldown
+	if _dash_cooldown_remaining > 0.0:
+		_dash_cooldown_remaining -= delta
+		if _dash_cooldown_remaining <= 0.0:
+			dash_ready.emit(true)
+
+	# Dash movement
+	if _dashing:
+		_dash_elapsed += delta
+		velocity = _dash_dir * _cached_speed * DASH_SPEED_MULT
+		if _dash_elapsed >= DASH_DURATION:
+			_dashing = false
+	else:
+		velocity = final_dir * _cached_speed
 	move_and_slide()
-	if final_dir.length() > 0.1:
+	if final_dir.length() > 0.1 and not _dashing:
 		sprite.flip_h = final_dir.x < 0.0
 
 	if _cached_regen > 0.0:
@@ -85,6 +110,26 @@ func _keyboard_dir() -> Vector2:
 func set_move_direction(dir: Vector2) -> void:
 	move_dir = dir
 
+func try_dash() -> void:
+	if not GameManager.stats.get("dash_enabled", false):
+		return
+	if _dash_cooldown_remaining > 0.0:
+		return
+	var dir: Vector2 = move_dir if move_dir.length() > 0.1 else _keyboard_dir()
+	if dir.length() < 0.1:
+		return
+	_dashing               = true
+	_dash_dir              = dir.normalized()
+	_dash_elapsed          = 0.0
+	_dash_cooldown_remaining = DASH_COOLDOWN
+	is_invincible          = true
+	iframes_timer.start(DASH_DURATION + 0.05)
+	dash_ready.emit(false)
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio:
+		audio.play_any("dash")
+	Input.vibrate_handheld(40)
+
 # ── Combat ────────────────────────────────────────────────────────────────────
 func take_damage(amount: int) -> void:
 	if is_invincible or GameManager.state != GameManager.State.PLAYING:
@@ -107,6 +152,7 @@ func take_damage(amount: int) -> void:
 	current_hp = maxi(current_hp - reduced, 0)
 	health_changed.emit(current_hp, GameManager.stats["max_health"])
 	_flash(Color(1.0, 0.2, 0.2))
+	Input.vibrate_handheld(80)
 	if camera and camera.has_method("add_trauma"):
 		camera.add_trauma(0.4)
 	is_invincible = true
@@ -183,7 +229,11 @@ func _shoot() -> void:
 			continue
 		proj.global_position = global_position
 		var dir: Vector2 = (target.global_position - global_position).normalized()
-		proj.launch(dir, GameManager.stats["damage"], GameManager.stats["projectile_speed"])
+		var dmg: int = int(GameManager.stats["damage"])
+		if GameManager.stats.get("berserk_threshold", 0.0) > 0.0:
+			if float(current_hp) / float(GameManager.stats["max_health"]) < GameManager.stats["berserk_threshold"]:
+				dmg = int(float(dmg) * 1.6)
+		proj.launch(dir, dmg, GameManager.stats["projectile_speed"])
 
 func _nearest_enemies(count: int) -> Array:
 	var enemies := get_tree().get_nodes_in_group("enemies")

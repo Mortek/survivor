@@ -19,6 +19,9 @@ var ENEMY_TYPE_TANK     := Enemy.Type.TANK
 var ENEMY_TYPE_BOSS     := Enemy.Type.BOSS
 var ENEMY_TYPE_SPLITTER := Enemy.Type.SPLITTER
 var ENEMY_TYPE_EXPLODER := Enemy.Type.EXPLODER
+var ENEMY_TYPE_SHIELDER := Enemy.Type.SHIELDER
+var ENEMY_TYPE_HEALER   := Enemy.Type.HEALER
+var ENEMY_TYPE_SWARM    := Enemy.Type.SWARM
 
 const ELITE_CHANCE := 0.08
 
@@ -47,7 +50,8 @@ func _process(delta: float) -> void:
 		_try_spawn()
 
 	_wave_timer += delta
-	if _wave_timer >= wave_duration:
+	var effective_duration: float = wave_duration * float(GameManager.stats.get("wave_speed_mult", 1.0))
+	if _wave_timer >= effective_duration:
 		_wave_timer = 0.0
 		_next_wave()
 
@@ -74,7 +78,14 @@ func _try_spawn() -> void:
 		return
 	var type_int := _pick_type()
 	var elite    := randf() < ELITE_CHANCE
-	_spawn_enemy(type_int, GameManager.get_wave_multiplier(), elite)
+	if type_int == ENEMY_TYPE_SWARM:
+		# Spawn a cluster of 6 swarm enemies — no individual elite rolls
+		var base_pos := _edge_position()
+		for i in 6:
+			var offset := Vector2(randf_range(-30, 30), randf_range(-30, 30))
+			_spawn_enemy(ENEMY_TYPE_SWARM, GameManager.get_wave_multiplier(), false, base_pos + offset)
+	else:
+		_spawn_enemy(type_int, GameManager.get_wave_multiplier(), elite)
 
 func _spawn_boss() -> void:
 	if not _player or not _container or not enemy_scene:
@@ -100,25 +111,31 @@ func _pick_type() -> int:
 	var w := GameManager.wave
 	var r := randf()
 	if w <= 2:
-		# Only basics
 		return ENEMY_TYPE_BASIC
 	elif w <= 4:
-		# Basics and fasts
 		if r < 0.72: return ENEMY_TYPE_BASIC
 		else:        return ENEMY_TYPE_FAST
 	elif w <= 7:
-		# Introduce tanks and splitters
 		if   r < 0.45: return ENEMY_TYPE_BASIC
 		elif r < 0.72: return ENEMY_TYPE_FAST
 		elif r < 0.88: return ENEMY_TYPE_TANK
 		else:          return ENEMY_TYPE_SPLITTER
-	else:
-		# All types, exploders appear at wave 8+
+	elif w <= 11:
 		if   r < 0.35: return ENEMY_TYPE_BASIC
 		elif r < 0.58: return ENEMY_TYPE_FAST
 		elif r < 0.73: return ENEMY_TYPE_TANK
-		elif r < 0.87: return ENEMY_TYPE_SPLITTER
-		else:          return ENEMY_TYPE_EXPLODER
+		elif r < 0.84: return ENEMY_TYPE_SPLITTER
+		elif r < 0.92: return ENEMY_TYPE_EXPLODER
+		else:          return ENEMY_TYPE_SHIELDER
+	else:
+		if   r < 0.25: return ENEMY_TYPE_BASIC
+		elif r < 0.42: return ENEMY_TYPE_FAST
+		elif r < 0.55: return ENEMY_TYPE_TANK
+		elif r < 0.65: return ENEMY_TYPE_SPLITTER
+		elif r < 0.74: return ENEMY_TYPE_EXPLODER
+		elif r < 0.82: return ENEMY_TYPE_SHIELDER
+		elif r < 0.91: return ENEMY_TYPE_SWARM
+		else:          return ENEMY_TYPE_HEALER
 
 func _edge_position() -> Vector2:
 	var cam     := get_viewport().get_camera_2d()

@@ -25,6 +25,7 @@ const COIN_SCENE := preload("res://scenes/coin.tscn")
 var _go_kills_label: Label = null
 var _go_wave_label:  Label = null
 var _go_coins_label: Label = null
+var _go_best_label:  Label = null
 
 # ── Level-up / boss screen flash ──────────────────────────────────────────────
 var _level_flash: ColorRect = null
@@ -62,6 +63,15 @@ var _shield_bar: HBoxContainer = null
 # ── Pause overlay ─────────────────────────────────────────────────────────────
 var _pause_overlay: Control = null
 
+# ── Dash button ───────────────────────────────────────────────────────────────
+var _dash_btn: Button = null
+
+# ── Settings overlay ──────────────────────────────────────────────────────────
+var _settings_overlay: Control = null
+
+# ── Player hit flash tracking ─────────────────────────────────────────────────
+var _prev_player_hp: int = 0
+
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_KILL_FEED_DATA = {
@@ -71,6 +81,9 @@ func _ready() -> void:
 		Enemy.Type.BOSS:     ["💀 BOSS",     Color(1.00, 0.20, 1.00)],
 		Enemy.Type.SPLITTER: ["☠ Splitter",  Color(0.30, 1.00, 0.60)],
 		Enemy.Type.EXPLODER: ["💥 Exploder", Color(1.00, 0.55, 0.10)],
+		Enemy.Type.SHIELDER: ["🛡 Shielder",  Color(0.40, 0.70, 1.00)],
+		Enemy.Type.HEALER:   ["💚 Healer",    Color(0.20, 0.90, 0.80)],
+		Enemy.Type.SWARM:    ["☠ Swarm",      Color(1.00, 0.60, 0.80)],
 	}
 	GameManager.reset()
 
@@ -104,6 +117,7 @@ func _ready() -> void:
 
 	# ── Pause button: top-right, row 2 (below health bar) ──
 	pause_btn.custom_minimum_size = Vector2(48, 26)
+	pause_btn.process_mode = Node.PROCESS_MODE_ALWAYS
 	pause_btn.set_anchor_and_offset(SIDE_LEFT,   1.0, -54.0)
 	pause_btn.set_anchor_and_offset(SIDE_TOP,    0.0,  26.0)
 	pause_btn.set_anchor_and_offset(SIDE_RIGHT,  1.0,  -6.0)
@@ -153,6 +167,33 @@ func _ready() -> void:
 	# ── Pause overlay ──
 	_build_pause_overlay()
 
+	# ── Dash button ──
+	_build_dash_button()
+
+	# ── Settings button ──
+	_build_settings_button()
+
+	# ── Red flash on player hit ──
+	player.health_changed.connect(_on_player_health_changed)
+	_prev_player_hp = GameManager.stats["max_health"]
+
+	# ── Daily challenge: auto-apply today's curse ──
+	if GameManager.daily_challenge_active:
+		GameManager.daily_challenge_active = false
+		var curse_id_map := {
+			"Glass Cannon": "glass_cannon", "Blood Price": "blood_price",
+			"Berserker Pact": "berserker", "Chaos Form": "chaos_form",
+			"Iron Burden": "iron_burden", "Cursed Knowledge": "cursed_xp",
+			"Giant Form": "giant_form", "Time Warp": "time_warp",
+			"Wraith Pact": "wraith_pact", "Corruption": "corruption",
+		}
+		var cid: String = curse_id_map.get(GameManager.daily_challenge_curse, "")
+		if not cid.is_empty():
+			for curse in GameManager._curse_pool:
+				if curse["id"] == cid:
+					GameManager.accept_curse(curse)
+					break
+
 	# ── Lucky Star: offer free upgrade on first frame ──
 	if meta and meta.get_upgrade_level("lucky_start") >= 1:
 		call_deferred("_lucky_start_offer")
@@ -186,13 +227,18 @@ func _build_extra_go_labels() -> void:
 	_go_kills_label = _make_go_label()
 	_go_wave_label  = _make_go_label()
 	_go_coins_label = _make_go_label()
+	_go_best_label  = _make_go_label()
+	_go_best_label.add_theme_font_size_override("font_size", 14)
+	_go_best_label.modulate = Color(0.8, 0.8, 0.8)
 	vbox.add_child(_go_kills_label)
 	vbox.add_child(_go_wave_label)
 	vbox.add_child(_go_coins_label)
+	vbox.add_child(_go_best_label)
 	var btn_idx := restart_btn.get_index()
 	vbox.move_child(_go_kills_label,  btn_idx)
 	vbox.move_child(_go_wave_label,   btn_idx + 1)
 	vbox.move_child(_go_coins_label,  btn_idx + 2)
+	vbox.move_child(_go_best_label,   btn_idx + 3)
 
 func _make_go_label() -> Label:
 	var lbl := Label.new()
@@ -377,6 +423,8 @@ func _on_enemy_spawned(enemy: Node) -> void:
 	if enemy.enemy_type == Enemy.Type.SPLITTER:
 		if not enemy.split_requested.is_connected(_on_split_requested):
 			enemy.split_requested.connect(_on_split_requested)
+	if enemy.enemy_type == Enemy.Type.BOSS:
+		_play_boss_intro(enemy)
 
 func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int) -> void:
 	call_deferred("_spawn_coin", world_pos, xp)
@@ -615,6 +663,8 @@ func _spawn_magnet_orb(world_pos: Vector2) -> void:
 				coin.attract_magnet()
 		# Small flash feedback
 		_do_flash(Color(0.2, 1.0, 0.5, 0.3), 0.3)
+		if _audio:
+			_audio.play_any("coin_attract")
 		orb.queue_free()
 	)
 	coins_node.add_child(orb)
@@ -675,6 +725,185 @@ func _position_pause_overlay() -> void:
 	lbl.position = Vector2.ZERO
 	lbl.size     = vp
 
+# ── Player Hit Flash ──────────────────────────────────────────────────────────
+func _on_player_health_changed(current: int, _max: int) -> void:
+	if current < _prev_player_hp and current > 0:
+		_do_flash(Color(1.0, 0.1, 0.1, 0.35), 0.25)
+	_prev_player_hp = current
+
+# ── Dash Button ───────────────────────────────────────────────────────────────
+func _build_dash_button() -> void:
+	_dash_btn = Button.new()
+	_dash_btn.text    = "DASH"
+	_dash_btn.add_theme_font_size_override("font_size", 18)
+	_dash_btn.visible = GameManager.stats.get("dash_enabled", false)
+	_dash_btn.pressed.connect(func() -> void: player.try_dash())
+	player.dash_ready.connect(func(is_ready: bool) -> void:
+		_dash_btn.disabled = not is_ready
+	)
+	GameManager.stats_changed.connect(func() -> void:
+		_dash_btn.visible = GameManager.stats.get("dash_enabled", false)
+	)
+	$UI/HUD.add_child(_dash_btn)
+	call_deferred("_position_dash_btn")
+
+func _position_dash_btn() -> void:
+	if not _dash_btn:
+		return
+	var vp := get_viewport_rect().size
+	_dash_btn.custom_minimum_size = Vector2(80, 50)
+	_dash_btn.position = Vector2(vp.x * 0.5 - 40.0, vp.y - 100.0)
+
+# ── Settings Button ───────────────────────────────────────────────────────────
+func _build_settings_button() -> void:
+	var btn := Button.new()
+	btn.text = "⚙"
+	btn.add_theme_font_size_override("font_size", 18)
+	btn.custom_minimum_size = Vector2(36, 26)
+	btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	btn.pressed.connect(_open_settings)
+	$UI/HUD.add_child(btn)
+	call_deferred("_position_settings_btn", btn)
+
+func _position_settings_btn(btn: Button) -> void:
+	var vp := get_viewport_rect().size
+	btn.position = Vector2(vp.x - 100.0, 26.0)
+
+func _open_settings() -> void:
+	if _settings_overlay:
+		return
+	_settings_overlay = _build_settings_overlay()
+	ui.add_child(_settings_overlay)
+
+func _build_settings_overlay() -> Control:
+	var vp  := get_viewport_rect().size
+	var root := Control.new()
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.position     = Vector2.ZERO
+	root.size         = vp
+
+	var bg := ColorRect.new()
+	bg.color        = Color(0, 0, 0, 0.75)
+	bg.position     = Vector2.ZERO
+	bg.size         = vp
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(bg)
+
+	var pw := minf(vp.x - 16.0, 380.0)
+	var ph := 310.0
+	var panel := PanelContainer.new()
+	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
+	panel.size     = Vector2(pw, ph)
+	root.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text                 = "⚙  SETTINGS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	vbox.add_child(title)
+
+	# Master volume
+	vbox.add_child(_make_volume_row("Volume", func(v: float) -> void:
+		AudioServer.set_bus_volume_db(0, linear_to_db(v))
+		_save_setting("volume", v)
+	, _load_setting("volume", 0.8)))
+
+	# Vibration toggle
+	var vib_row := HBoxContainer.new()
+	var vib_lbl := Label.new()
+	vib_lbl.text                  = "Vibration"
+	vib_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vib_lbl.add_theme_font_size_override("font_size", 15)
+	vib_row.add_child(vib_lbl)
+	var vib_toggle := CheckButton.new()
+	vib_toggle.button_pressed = _load_setting("vibration", 1.0) > 0.5
+	vib_toggle.toggled.connect(func(on: bool) -> void:
+		_save_setting("vibration", 1.0 if on else 0.0)
+	)
+	vib_row.add_child(vib_toggle)
+	vbox.add_child(vib_row)
+
+	vbox.add_child(HSeparator.new())
+
+	var menu_btn := Button.new()
+	menu_btn.text = "⬅  MAIN MENU"
+	menu_btn.add_theme_font_size_override("font_size", 16)
+	menu_btn.pressed.connect(func() -> void:
+		Engine.time_scale  = 1.0
+		get_tree().paused  = false
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	)
+	vbox.add_child(menu_btn)
+
+	var close_btn := Button.new()
+	close_btn.text = "CLOSE  ✕"
+	close_btn.add_theme_font_size_override("font_size", 16)
+	close_btn.pressed.connect(func() -> void:
+		root.queue_free()
+		_settings_overlay = null
+	)
+	vbox.add_child(close_btn)
+
+	# Apply saved volume on open
+	var saved_vol := _load_setting("volume", 0.8)
+	AudioServer.set_bus_volume_db(0, linear_to_db(saved_vol))
+
+	return root
+
+func _make_volume_row(label_text: String, on_change: Callable, initial: float) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	var lbl := Label.new()
+	lbl.text                  = label_text
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.add_theme_font_size_override("font_size", 15)
+	row.add_child(lbl)
+	var slider := HSlider.new()
+	slider.min_value            = 0.0
+	slider.max_value            = 1.0
+	slider.step                 = 0.05
+	slider.value                = initial
+	slider.custom_minimum_size  = Vector2(120, 0)
+	slider.value_changed.connect(on_change)
+	row.add_child(slider)
+	return row
+
+func _save_setting(key: String, value: float) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load("user://settings.cfg")
+	cfg.set_value("settings", key, value)
+	cfg.save("user://settings.cfg")
+
+func _load_setting(key: String, default_val: float) -> float:
+	var cfg := ConfigFile.new()
+	if cfg.load("user://settings.cfg") != OK:
+		return default_val
+	return float(cfg.get_value("settings", key, default_val))
+
+# ── Focus Lost Auto-Pause ─────────────────────────────────────────────────────
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		if GameManager.state == GameManager.State.PLAYING:
+			_toggle_pause()
+
+# ── Boss Intro Animation ──────────────────────────────────────────────────────
+func _play_boss_intro(boss: Node) -> void:
+	# Scale-in: boss starts tiny, grows to normal size
+	var sprite := boss.get_node_or_null("Sprite2D") as Node2D
+	if sprite:
+		sprite.scale = Vector2(0.1, 0.1)
+		var tw := boss.create_tween()
+		tw.tween_property(sprite, "scale", Vector2(2.5, 2.5), 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	# Screen shake + red flash
+	if camera and camera.has_method("add_trauma"):
+		camera.add_trauma(0.5)
+	_do_flash(Color(0.8, 0.0, 0.0, 0.4), 0.5)
+	if _audio:
+		_audio.play_any("boss_intro")
+
 # ── Pause ─────────────────────────────────────────────────────────────────────
 func _toggle_pause() -> void:
 	match GameManager.state:
@@ -705,6 +934,12 @@ func _on_game_over() -> void:
 		_go_wave_label.text  = "Wave: " + str(GameManager.wave)
 	if _go_coins_label:
 		_go_coins_label.text = "Coins earned: " + str(GameManager.coins_this_run)
+	var meta := get_node_or_null("/root/MetaManager")
+	if meta:
+		meta.update_best_run(GameManager.wave, GameManager.kills, GameManager.survival_time)
+	if _go_best_label:
+		var meta2 := get_node_or_null("/root/MetaManager")
+		_go_best_label.text = meta2.get_best_run_string() if meta2 else ""
 	# Add meta shop button
 	_add_meta_shop_button()
 	game_over_screen.show()

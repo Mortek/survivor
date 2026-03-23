@@ -10,7 +10,7 @@ signal hit_taken(world_position: Vector2, amount: float)
 signal split_requested(world_position: Vector2)   # emitted by SPLITTER on death
 
 # ── Types ─────────────────────────────────────────────────────────────────────
-enum Type { BASIC, FAST, TANK, BOSS, SPLITTER, EXPLODER }
+enum Type { BASIC, FAST, TANK, BOSS, SPLITTER, EXPLODER, SHIELDER, HEALER, SWARM }
 @export var enemy_type: Type = Type.BASIC
 
 # ── Per-type base config ──────────────────────────────────────────────────────
@@ -21,6 +21,9 @@ const CONFIGS: Dictionary = {
 	Type.BOSS:     { "hp": 600, "spd": 55,   "dmg": 28, "xp": 200, "col": Color(0.90, 0.10, 0.90) },
 	Type.SPLITTER: { "hp": 45,  "spd": 90,   "dmg": 8,  "xp": 20,  "col": Color(0.20, 0.85, 0.50) },
 	Type.EXPLODER: { "hp": 25,  "spd": 120,  "dmg": 35, "xp": 25,  "col": Color(1.00, 0.45, 0.05) },
+	Type.SHIELDER: { "hp": 60,  "spd": 65,   "dmg": 12, "xp": 35,  "col": Color(0.40, 0.60, 1.00) },
+	Type.HEALER:   { "hp": 40,  "spd": 50,   "dmg": 8,  "xp": 40,  "col": Color(0.20, 0.90, 0.80) },
+	Type.SWARM:    { "hp": 8,   "spd": 175,  "dmg": 5,  "xp": 6,   "col": Color(1.00, 0.60, 0.80) },
 }
 
 # ── Node References ───────────────────────────────────────────────────────────
@@ -38,6 +41,23 @@ var _base_color: Color
 var _player: Node2D  = null
 var _dead: bool      = false
 var is_elite: bool   = false
+
+# ── Status effects ────────────────────────────────────────────────────────────
+var _slow_timer:       float = 0.0
+var _slow_factor:      float = 1.0
+var _burn_timer:       float = 0.0
+var _burn_acc:         float = 0.0
+var _burn_dmg_per_sec: float = 0.0
+var _knockback_vel:    Vector2 = Vector2.ZERO
+
+# ── Shielder-specific ─────────────────────────────────────────────────────────
+var _shield_active:    bool  = false
+
+# ── Healer-specific ───────────────────────────────────────────────────────────
+var _heal_timer:       float = 0.0
+const HEALER_PULSE_INTERVAL := 1.5
+const HEALER_PULSE_RADIUS   := 120.0
+const HEALER_PULSE_AMOUNT   := 5.0
 
 # ── Boss-specific state ───────────────────────────────────────────────────────
 var _charge_timer:   float = 0.0
@@ -75,7 +95,7 @@ func activate(player: Node2D, wave_multiplier: float) -> void:
 	max_hp      = cfg["hp"]  * wave_multiplier
 	current_hp  = max_hp
 	spd         = minf(cfg["spd"] * (1.0 + (wave_multiplier - 1.0) * 0.25), 220.0) \
-	              * GameManager.stats.get("enemy_speed_mult", 1.0)
+				  * GameManager.stats.get("enemy_speed_mult", 1.0)
 	dmg         = int(cfg["dmg"] * wave_multiplier)
 	xp_value    = int(cfg["xp"] * wave_multiplier)
 
@@ -100,19 +120,55 @@ func activate(player: Node2D, wave_multiplier: float) -> void:
 	else:
 		sprite.modulate = _base_color
 
+	# Per-type setup
+	if enemy_type == Type.SHIELDER:
+		_shield_active = true
+	_slow_timer       = 0.0
+	_slow_factor      = 1.0
+	_burn_timer       = 0.0
+	_burn_acc         = 0.0
+	_burn_dmg_per_sec = 0.0
+	_knockback_vel    = Vector2.ZERO
+	_heal_timer       = 0.0
+
 	_update_hp_bar()
 
 # ── AI Movement ───────────────────────────────────────────────────────────────
 func _physics_process(delta: float) -> void:
 	if _dead or not _player or GameManager.state != GameManager.State.PLAYING:
 		return
+
+	# Status effect ticks
+	_knockback_vel = _knockback_vel.move_toward(Vector2.ZERO, 500.0 * delta)
+
+	if _slow_timer > 0.0:
+		_slow_timer -= delta
+		if _slow_timer <= 0.0:
+			_slow_factor = 1.0
+
+	if _burn_timer > 0.0:
+		_burn_timer -= delta
+		_burn_acc   += delta
+		if _burn_acc >= 1.0:
+			_burn_acc -= 1.0
+			if not _dead:
+				current_hp -= _burn_dmg_per_sec
+				_update_hp_bar()
+				_flash_hit()
+				hit_taken.emit(global_position, _burn_dmg_per_sec)
+				if current_hp <= 0.0:
+					_die()
+					return
+
 	match enemy_type:
 		Type.BOSS:
 			_boss_ai(delta)
 		Type.EXPLODER:
 			_exploder_ai(delta)
+		Type.HEALER:
+			_healer_ai(delta)
 		_:
-			velocity = (_player.global_position - global_position).normalized() * spd
+			velocity = (_player.global_position - global_position).normalized() * spd * _slow_factor + _knockback_vel
 			move_and_slide()
 
 func _boss_ai(delta: float) -> void:
@@ -159,6 +215,24 @@ func _explode() -> void:
 			_player.take_damage(dmg)
 	_die()
 
+func _healer_ai(delta: float) -> void:
+	velocity = (_player.global_position - global_position).normalized() * spd * _slow_factor + _knockback_vel
+	move_and_slide()
+	_heal_timer += delta
+	if _heal_timer >= HEALER_PULSE_INTERVAL:
+		_heal_timer = 0.0
+		_pulse_heal()
+
+func _pulse_heal() -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy) or enemy == self:
+			continue
+		var e := enemy as Enemy
+		if e and global_position.distance_to(e.global_position) <= HEALER_PULSE_RADIUS:
+			if e.current_hp < e.max_hp:
+				e.current_hp = minf(e.current_hp + HEALER_PULSE_AMOUNT, e.max_hp)
+				e._update_hp_bar()
+
 # ── Combat ────────────────────────────────────────────────────────────────────
 func _is_on_screen() -> bool:
 	var vp         := get_viewport()
@@ -169,6 +243,14 @@ func take_damage(amount: float) -> void:
 	if _dead:
 		return
 	if not _is_on_screen():
+		return
+	# Shielder absorbs the first hit
+	if _shield_active:
+		_shield_active = false
+		sprite.modulate = Color(0.5, 0.8, 1.0)
+		await get_tree().create_timer(0.12).timeout
+		if is_instance_valid(self) and not _dead:
+			sprite.modulate = _base_color.lightened(0.5) if is_elite else _base_color
 		return
 	current_hp -= amount
 	_update_hp_bar()
@@ -201,6 +283,17 @@ func _die() -> void:
 		split_requested.emit(global_position)
 	queue_free()
 
+func apply_knockback(force: Vector2) -> void:
+	_knockback_vel = force
+
+func apply_slow(factor: float, duration: float) -> void:
+	_slow_factor = minf(_slow_factor, 1.0 - factor)
+	_slow_timer  = maxf(_slow_timer, duration)
+
+func apply_burn(dmg_per_sec: float, duration: float) -> void:
+	_burn_dmg_per_sec = maxf(_burn_dmg_per_sec, dmg_per_sec)
+	_burn_timer       = maxf(_burn_timer, duration)
+
 # ── Contact Damage ────────────────────────────────────────────────────────────
 func _on_damage_area_body_entered(body: Node) -> void:
 	if body.is_in_group("player") and body.has_method("take_damage"):
@@ -216,6 +309,9 @@ static func _shape_tex(type: int) -> ImageTexture:
 		Type.BOSS:     return _circle_tex(26)   # Boss uses sprite.scale = 2.5
 		Type.SPLITTER: return _triangle_tex(26)
 		Type.EXPLODER: return _cross_tex(22)
+		Type.SHIELDER: return _hexagon_tex(28)
+		Type.HEALER:   return _star_tex(28)
+		Type.SWARM:    return _circle_tex(12)
 		_:             return _circle_tex(26)
 
 static func _circle_tex(size: int) -> ImageTexture:
@@ -266,5 +362,35 @@ static func _cross_tex(size: int) -> ImageTexture:
 	for y in size:
 		for x in size:
 			if abs(y - half) <= thickness or abs(x - half) <= thickness:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+static func _hexagon_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (size - 1) * 0.5
+	var cy := (size - 1) * 0.5
+	var r  := size * 0.5 - 0.5
+	for y in size:
+		for x in size:
+			var dx := x - cx
+			var dy := y - cy
+			var angle := atan2(dy, dx)
+			var hex_r := r * cos(fmod(absf(angle) + PI / 6.0, PI / 3.0) - PI / 6.0)
+			if sqrt(dx * dx + dy * dy) <= hex_r:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+static func _star_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (size - 1) * 0.5
+	var cy := (size - 1) * 0.5
+	var thick := maxi(int(size / 5.0), 2)
+	for y in size:
+		for x in size:
+			var dx: int = abs(x - int(cx))
+			var dy: int = abs(y - int(cy))
+			if dx <= thick or dy <= thick:
 				img.set_pixel(x, y, Color.WHITE)
 	return ImageTexture.create_from_image(img)

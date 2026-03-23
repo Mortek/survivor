@@ -22,6 +22,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if GameManager.state != GameManager.State.PLAYING:
 		return
+	var eff_radius: float = _radius * float(GameManager.stats.get("area_mult", 1.0))
+	if _coll_shape and absf(_coll_shape.radius - eff_radius) > 0.5:
+		_coll_shape.radius = eff_radius
 	_timer += delta
 	queue_redraw()
 	if _timer >= _cooldown:
@@ -31,7 +34,8 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var pulse := 0.07 + 0.10 * sin((_timer / _cooldown) * TAU)
 	var color := Color(0.95, 0.3, 0.3, pulse) if _is_crimson else Color(1.0, 0.85, 0.2, pulse)
-	draw_arc(Vector2.ZERO, _radius, 0.0, TAU, 36, color, 2.5)
+	var r: float = _radius * float(GameManager.stats.get("area_mult", 1.0))
+	draw_arc(Vector2.ZERO, r, 0.0, TAU, 36, color, 2.5)
 
 func _sweep() -> void:
 	var player := get_parent()

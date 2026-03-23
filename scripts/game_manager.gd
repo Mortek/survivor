@@ -35,6 +35,12 @@ var _combo_timer:   float = 0.0
 const COMBO_WINDOW          := 2.5
 var _active_curses:  Array  = []
 var _achieved:       Dictionary = {}
+var total_crits: int = 0
+var _corruption_counter: int = 0
+
+# ── Daily Challenge ───────────────────────────────────────────────────────────
+var daily_challenge_active: bool   = false
+var daily_challenge_curse:  String = ""
 
 # ── Player Stats ──────────────────────────────────────────────────────────────
 var stats: Dictionary = {
@@ -66,6 +72,17 @@ var stats: Dictionary = {
 	"crimson_reaper":     false,
 	"death_orbit":        false,
 	"thunder_god":        false,
+	# New mechanics
+	"pierce":             0,
+	"area_mult":          1.0,
+	"knockback":          0.0,
+	"crit_chance":        0.0,
+	"slow_on_hit":        false,
+	"burn_on_hit":        false,
+	"berserk_threshold":  0.0,
+	"dash_enabled":       false,
+	"wave_speed_mult":    1.0,
+	"corruption_active":  false,
 }
 var _default_stats: Dictionary
 
@@ -152,6 +169,18 @@ func add_kill() -> void:
 	_combo_timer  = 0.0
 	combo_updated.emit(combo_count)
 	_check_achievements()
+	# Corruption: every 5th kill deals 8 damage to player
+	if stats.get("corruption_active", false):
+		_corruption_counter += 1
+		if _corruption_counter >= 5:
+			_corruption_counter = 0
+			var _player := get_tree().get_first_node_in_group("player")
+			if _player and _player.has_method("take_damage"):
+				_player.take_damage(8)
+
+func add_crit() -> void:
+	total_crits += 1
+	_check_achievements()
 
 # ── Curse System ──────────────────────────────────────────────────────────────
 ## Called by spawner at certain waves. Picks 2 random curses and offers them.
@@ -196,6 +225,9 @@ func _check_achievements() -> void:
 		stats.get("boomerang_enabled", false) and
 		stats.get("lightning_enabled", false)
 	)
+	_try_achieve("wave10",      "Wave Veteran",  wave >= 10)
+	_try_achieve("big_combo",   "On Fire!",      combo_count >= 20)
+	_try_achieve("curse_lover", "Cursed Soul",   _active_curses.size() >= 3)
 
 func _try_achieve(id: String, title: String, condition: bool) -> void:
 	if condition and not _achieved.has(id):
@@ -225,7 +257,9 @@ func reset() -> void:
 	coin_count     = 0
 	kills          = 0
 	coins_this_run = 0
-	combo_count    = 0
+	combo_count         = 0
+	total_crits         = 0
+	_corruption_counter = 0
 	_combo_timer   = 0.0
 	_active_curses = []
 	stats          = _default_stats.duplicate(true)
@@ -293,6 +327,42 @@ var _curse_pool: Array = [
 			stats["xp_multiplier"] *= 0.7
 			# coin bonus tracked via separate stat
 			stats["coin_mult"] = stats.get("coin_mult", 1.0) * 2.0,
+	},
+	{
+		"id":     "giant_form",
+		"name":   "Giant Form",
+		"desc":   "+80 Max HP\n−40 Speed",
+		"reward": "+80 HP",
+		"apply":  func() -> void:
+			stats["max_health"] += 80
+			stats["speed"]       = maxf(stats.get("speed", 150.0) - 40.0, 60.0),
+	},
+	{
+		"id":     "time_warp",
+		"name":   "Time Warp",
+		"desc":   "Waves 40% shorter\n+80% XP",
+		"reward": "+80% XP",
+		"apply":  func() -> void:
+			stats["xp_multiplier"]  = stats.get("xp_multiplier", 1.0) * 1.8
+			stats["wave_speed_mult"] = stats.get("wave_speed_mult", 1.0) * 0.6,
+	},
+	{
+		"id":     "wraith_pact",
+		"name":   "Wraith Pact",
+		"desc":   "−5 Armor\n+25% Crit Chance",
+		"reward": "+25% Crit",
+		"apply":  func() -> void:
+			stats["armor"]       -= 5
+			stats["crit_chance"] = minf(stats.get("crit_chance", 0.0) + 0.25, 0.80),
+	},
+	{
+		"id":     "corruption",
+		"name":   "Corruption",
+		"desc":   "+4 Projectiles\nEvery 5th kill hurts you",
+		"reward": "+4 Bullets",
+		"apply":  func() -> void:
+			stats["projectile_count"]  += 4
+			stats["corruption_active"]  = true,
 	},
 ]
 
@@ -477,5 +547,75 @@ var _upgrade_pool: Array = [
 		"condition": func() -> bool:
 			return stats.get("melee_level", 1) >= 3 and stats.get("boomerang_level", 1) >= 3 and not stats.get("synergy_aura", false),
 		"apply":     func() -> void: stats["synergy_aura"] = true,
+	},
+	# ── New mechanics ───────────────────────────────────────────────────────────
+	{
+		"id":    "pierce",
+		"name":  "Piercing Shot",
+		"desc":  "+1 Pierce\nBullets pass through enemies",
+		"apply": func() -> void: stats["pierce"] += 1,
+	},
+	{
+		"id":    "area_boost",
+		"name":  "Wide Sweep",
+		"desc":  "+30% Melee & Aura area",
+		"apply": func() -> void: stats["area_mult"] = stats.get("area_mult", 1.0) * 1.3,
+	},
+	{
+		"id":        "repulsion",
+		"name":      "Repulsion",
+		"desc":      "Hits knock enemies back",
+		"condition": func() -> bool: return stats.get("knockback", 0.0) == 0.0,
+		"apply":     func() -> void: stats["knockback"] = 180.0,
+	},
+	{
+		"id":    "crit_chance",
+		"name":  "Eagle Eye",
+		"desc":  "+15% Crit Chance\n2× damage on crit",
+		"apply": func() -> void: stats["crit_chance"] = minf(stats.get("crit_chance", 0.0) + 0.15, 0.80),
+	},
+	{
+		"id":        "frost_touch",
+		"name":      "Frost Touch",
+		"desc":      "Hits slow enemies 40%\nfor 2 seconds",
+		"condition": func() -> bool: return not stats.get("slow_on_hit", false),
+		"apply":     func() -> void: stats["slow_on_hit"] = true,
+	},
+	{
+		"id":        "fire_starter",
+		"name":      "Fire Starter",
+		"desc":      "Hits apply Burn\n3 dmg/sec for 3 sec",
+		"condition": func() -> bool: return not stats.get("burn_on_hit", false),
+		"apply":     func() -> void: stats["burn_on_hit"] = true,
+	},
+	{
+		"id":        "berserk",
+		"name":      "Berserk Mode",
+		"desc":      "Below 30% HP: +60% Dmg",
+		"condition": func() -> bool: return stats.get("berserk_threshold", 0.0) == 0.0,
+		"apply":     func() -> void: stats["berserk_threshold"] = 0.30,
+	},
+	{
+		"id":        "phase_dash",
+		"name":      "Phase Dash",
+		"desc":      "UNLOCK: Dash ability\nDash button appears in HUD",
+		"condition": func() -> bool: return not stats.get("dash_enabled", false),
+		"apply":     func() -> void: stats["dash_enabled"] = true,
+	},
+	{
+		"id":    "storm_shot",
+		"name":  "Storm Shot",
+		"desc":  "+3 Projectiles\n−50 Bullet Speed",
+		"apply": func() -> void:
+			stats["projectile_count"] += 3
+			stats["projectile_speed"]  = maxf(stats.get("projectile_speed", 320.0) - 50.0, 100.0),
+	},
+	{
+		"id":    "double_edge",
+		"name":  "Double-Edged",
+		"desc":  "−20 Max HP\n+25 Damage",
+		"apply": func() -> void:
+			stats["max_health"] = maxi(stats.get("max_health", 100) - 20, 20)
+			stats["damage"]     += 25,
 	},
 ]

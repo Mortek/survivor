@@ -24,41 +24,53 @@ func _ready() -> void:
 func _build_panel() -> void:
 	var vp := get_viewport_rect().size
 	var pw  := minf(vp.x - 16.0, 460.0)
-	var ph  := minf(vp.y - 20.0, 560.0)
+	var ph  := vp.y - 40.0
 
 	var panel := PanelContainer.new()
-	# Direct pixel center — works regardless of parent layout state
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	add_child(panel)
 
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	panel.add_child(vbox)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
+	panel.add_child(outer)
 
 	# Title
 	var title := Label.new()
-	title.text                     = "⚡  META UPGRADES"
-	title.horizontal_alignment     = HORIZONTAL_ALIGNMENT_CENTER
+	title.text                 = "⚡  META UPGRADES"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 22)
-	vbox.add_child(title)
+	outer.add_child(title)
 
 	# Coin balance
 	var coins_lbl := Label.new()
-	coins_lbl.name                  = "CoinsLabel"
-	coins_lbl.horizontal_alignment  = HORIZONTAL_ALIGNMENT_CENTER
+	coins_lbl.name                 = "CoinsLabel"
+	coins_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	coins_lbl.add_theme_font_size_override("font_size", 16)
-	coins_lbl.modulate              = Color(1.0, 0.9, 0.3)
+	coins_lbl.modulate             = Color(1.0, 0.9, 0.3)
 	_refresh_coins_label(coins_lbl)
-	vbox.add_child(coins_lbl)
+	outer.add_child(coins_lbl)
 
-	vbox.add_child(HSeparator.new())
+	outer.add_child(HSeparator.new())
 
-	# Upgrade rows
+	# Scrollable upgrade list
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical     = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode  = ScrollContainer.SCROLL_MODE_DISABLED
+	outer.add_child(scroll)
+
+	# Hide the scrollbar after it's created
+	scroll.get_v_scroll_bar().modulate = Color(1.0, 1.0, 1.0, 0.0)
+
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 8)
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(inner)
+
 	for upg in MetaManager.PERMANENT_UPGRADES:
-		vbox.add_child(_build_row(upg, coins_lbl))
+		inner.add_child(_build_row(upg, coins_lbl))
 
-	vbox.add_child(HSeparator.new())
+	outer.add_child(HSeparator.new())
 
 	# Close button
 	var close_btn := Button.new()
@@ -68,7 +80,7 @@ func _build_panel() -> void:
 		shop_closed.emit()
 		queue_free()
 	)
-	vbox.add_child(close_btn)
+	outer.add_child(close_btn)
 
 func _build_row(upg: Dictionary, coins_lbl: Label) -> HBoxContainer:
 	var row  := HBoxContainer.new()

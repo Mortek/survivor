@@ -1,13 +1,18 @@
 extends Area2D
 ## Projectile – fired by the player.
-## Moves linearly, damages the first enemy it hits, then returns to pool.
+## Supports: pierce, crit, knockback, slow-on-hit, burn-on-hit.
 
-@onready var sprite:          Sprite2D = $Sprite2D
-@onready var lifetime_timer:  Timer    = $LifetimeTimer
+@onready var sprite:         Sprite2D = $Sprite2D
+@onready var lifetime_timer: Timer    = $LifetimeTimer
 
-var _velocity: Vector2 = Vector2.ZERO
-var _damage:   int     = 0
-var _hit:      bool    = false   # guard against double-hit
+var _velocity:          Vector2 = Vector2.ZERO
+var _damage:            int     = 0
+var _pierce_remaining:  int     = 0
+var _knockback:         float   = 0.0
+var _slow_on_hit:       bool    = false
+var _burn_on_hit:       bool    = false
+var _crit_chance:       float   = 0.0
+var _hit_enemies:       Array   = []  # track per-shot hits for pierce
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
@@ -17,23 +22,46 @@ func _ready() -> void:
 		img.fill(Color(0.2, 1.0, 1.0))
 		sprite.texture = ImageTexture.create_from_image(img)
 
-## Called by player._shoot() to initialize and fire
 func launch(direction: Vector2, damage: int, speed: float) -> void:
-	_damage   = damage
-	_velocity = direction * speed
-	_hit      = false
-	rotation  = direction.angle()
+	_damage           = damage
+	_velocity         = direction * speed
+	_hit_enemies.clear()
+	_pierce_remaining = GameManager.stats.get("pierce", 0)
+	_knockback        = float(GameManager.stats.get("knockback", 0.0))
+	_slow_on_hit      = GameManager.stats.get("slow_on_hit", false)
+	_burn_on_hit      = GameManager.stats.get("burn_on_hit", false)
+	_crit_chance      = float(GameManager.stats.get("crit_chance", 0.0))
+	rotation          = direction.angle()
 	lifetime_timer.start(2.8)
 
 func _process(delta: float) -> void:
 	position += _velocity * delta
 
 func _on_body_entered(body: Node) -> void:
-	if _hit:
+	if body in _hit_enemies:
 		return
-	if body.is_in_group("enemies") and body.has_method("take_damage"):
-		_hit = true
-		body.take_damage(float(_damage))
+	if not (body.is_in_group("enemies") and body.has_method("take_damage")):
+		return
+	_hit_enemies.append(body)
+
+	var dmg := float(_damage)
+	var is_crit := _crit_chance > 0.0 and randf() < _crit_chance
+	if is_crit:
+		dmg *= 2.0
+		GameManager.add_crit()
+
+	body.take_damage(dmg)
+
+	if _knockback > 0.0 and body.has_method("apply_knockback"):
+		body.apply_knockback(_velocity.normalized() * _knockback)
+	if _slow_on_hit and body.has_method("apply_slow"):
+		body.apply_slow(0.4, 2.0)
+	if _burn_on_hit and body.has_method("apply_burn"):
+		body.apply_burn(3.0, 3.0)
+
+	if _pierce_remaining > 0:
+		_pierce_remaining -= 1
+	else:
 		_return()
 
 func _on_lifetime_timeout() -> void:
@@ -41,7 +69,7 @@ func _on_lifetime_timeout() -> void:
 
 func _return() -> void:
 	_velocity = Vector2.ZERO
-	_hit      = false
+	_hit_enemies.clear()
 	lifetime_timer.stop()
 	var pool := get_parent()
 	if pool and pool.has_method("return_object"):
