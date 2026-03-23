@@ -8,7 +8,8 @@ func _ready() -> void:
 	_build_ui()
 
 func _build_ui() -> void:
-	var vp := Vector2(540.0, 960.0)
+	const VP := Vector2(540.0, 960.0)
+	const CX := VP.x * 0.5  # 270 — horizontal centre
 
 	# ── Background ──────────────────────────────────────────────────────────────
 	var bg_layer := CanvasLayer.new()
@@ -16,15 +17,16 @@ func _build_ui() -> void:
 	add_child(bg_layer)
 
 	var bg := ColorRect.new()
-	bg.color = Color(0.06, 0.06, 0.14, 1.0)
-	bg.size  = vp
+	bg.color    = Color(0.06, 0.06, 0.14, 1.0)
+	bg.position = Vector2.ZERO
+	bg.size     = VP
 	bg_layer.add_child(bg)
 
 	# Starfield
 	for _i in 50:
 		var star := ColorRect.new()
 		star.size     = Vector2(randf_range(1.0, 2.5), randf_range(1.0, 2.5))
-		star.position = Vector2(randf_range(0.0, vp.x), randf_range(0.0, vp.y))
+		star.position = Vector2(randf_range(0.0, VP.x), randf_range(0.0, VP.y))
 		star.color    = Color(1.0, 1.0, 1.0, randf_range(0.15, 0.65))
 		bg_layer.add_child(star)
 
@@ -33,8 +35,10 @@ func _build_ui() -> void:
 	_ui_layer.layer = 10
 	add_child(_ui_layer)
 
+	# Root control — explicit size so child pixel positions are reliable
 	var root := Control.new()
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.position = Vector2.ZERO
+	root.size     = VP
 	_ui_layer.add_child(root)
 
 	# ── Title ────────────────────────────────────────────────────────────────────
@@ -43,10 +47,8 @@ func _build_ui() -> void:
 	title.add_theme_font_size_override("font_size", 58)
 	title.modulate             = Color(0.30, 0.88, 1.00)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.set_anchor_and_offset(SIDE_LEFT,   0.0,  20.0)
-	title.set_anchor_and_offset(SIDE_TOP,    0.0, 130.0)
-	title.set_anchor_and_offset(SIDE_RIGHT,  1.0, -20.0)
-	title.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 205.0)
+	title.position             = Vector2(20.0, 130.0)
+	title.size                 = Vector2(VP.x - 40.0, 75.0)
 	root.add_child(title)
 
 	var sub := Label.new()
@@ -54,10 +56,8 @@ func _build_ui() -> void:
 	sub.add_theme_font_size_override("font_size", 17)
 	sub.modulate             = Color(0.62, 0.62, 0.76)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.set_anchor_and_offset(SIDE_LEFT,   0.0,  20.0)
-	sub.set_anchor_and_offset(SIDE_TOP,    0.0, 210.0)
-	sub.set_anchor_and_offset(SIDE_RIGHT,  1.0, -20.0)
-	sub.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 236.0)
+	sub.position             = Vector2(20.0, 210.0)
+	sub.size                 = Vector2(VP.x - 40.0, 26.0)
 	root.add_child(sub)
 
 	# ── Stats strip ──────────────────────────────────────────────────────────────
@@ -68,10 +68,8 @@ func _build_ui() -> void:
 		coin_lbl.add_theme_font_size_override("font_size", 18)
 		coin_lbl.modulate             = Color(1.0, 0.88, 0.25)
 		coin_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		coin_lbl.set_anchor_and_offset(SIDE_LEFT,   0.0,  20.0)
-		coin_lbl.set_anchor_and_offset(SIDE_TOP,    0.0, 274.0)
-		coin_lbl.set_anchor_and_offset(SIDE_RIGHT,  1.0, -20.0)
-		coin_lbl.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 300.0)
+		coin_lbl.position             = Vector2(20.0, 274.0)
+		coin_lbl.size                 = Vector2(VP.x - 40.0, 26.0)
 		root.add_child(coin_lbl)
 
 		var ach_lbl := Label.new()
@@ -79,21 +77,16 @@ func _build_ui() -> void:
 		ach_lbl.add_theme_font_size_override("font_size", 15)
 		ach_lbl.modulate             = Color(0.72, 0.72, 0.72)
 		ach_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		ach_lbl.set_anchor_and_offset(SIDE_LEFT,   0.0,  20.0)
-		ach_lbl.set_anchor_and_offset(SIDE_TOP,    0.0, 305.0)
-		ach_lbl.set_anchor_and_offset(SIDE_RIGHT,  1.0, -20.0)
-		ach_lbl.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 328.0)
+		ach_lbl.position             = Vector2(20.0, 305.0)
+		ach_lbl.size                 = Vector2(VP.x - 40.0, 23.0)
 		root.add_child(ach_lbl)
 
 	# ── PLAY button ──────────────────────────────────────────────────────────────
 	var play_btn := Button.new()
 	play_btn.text                = "▶  PLAY"
 	play_btn.add_theme_font_size_override("font_size", 32)
-	play_btn.custom_minimum_size = Vector2(240.0, 72.0)
-	play_btn.set_anchor_and_offset(SIDE_LEFT,   0.5, -120.0)
-	play_btn.set_anchor_and_offset(SIDE_TOP,    0.5, -148.0)
-	play_btn.set_anchor_and_offset(SIDE_RIGHT,  0.5,  120.0)
-	play_btn.set_anchor_and_offset(SIDE_BOTTOM, 0.5,  -76.0)
+	play_btn.position            = Vector2(CX - 120.0, 420.0)
+	play_btn.size                = Vector2(240.0, 72.0)
 	play_btn.pressed.connect(_on_play)
 	root.add_child(play_btn)
 
@@ -101,11 +94,8 @@ func _build_ui() -> void:
 	var meta_btn := Button.new()
 	meta_btn.text                = "⚡  META UPGRADES"
 	meta_btn.add_theme_font_size_override("font_size", 20)
-	meta_btn.custom_minimum_size = Vector2(240.0, 54.0)
-	meta_btn.set_anchor_and_offset(SIDE_LEFT,   0.5, -120.0)
-	meta_btn.set_anchor_and_offset(SIDE_TOP,    0.5,  -58.0)
-	meta_btn.set_anchor_and_offset(SIDE_RIGHT,  0.5,  120.0)
-	meta_btn.set_anchor_and_offset(SIDE_BOTTOM, 0.5,   -4.0)
+	meta_btn.position            = Vector2(CX - 120.0, 508.0)
+	meta_btn.size                = Vector2(240.0, 54.0)
 	meta_btn.pressed.connect(_on_meta_shop)
 	root.add_child(meta_btn)
 
@@ -116,10 +106,8 @@ func _build_ui() -> void:
 	tip.modulate             = Color(0.55, 0.55, 0.65)
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tip.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-	tip.set_anchor_and_offset(SIDE_LEFT,   0.0,  20.0)
-	tip.set_anchor_and_offset(SIDE_TOP,    0.5,  20.0)
-	tip.set_anchor_and_offset(SIDE_RIGHT,  1.0, -20.0)
-	tip.set_anchor_and_offset(SIDE_BOTTOM, 0.5,  80.0)
+	tip.position             = Vector2(20.0, 600.0)
+	tip.size                 = Vector2(VP.x - 40.0, 60.0)
 	root.add_child(tip)
 
 	# ── Version ──────────────────────────────────────────────────────────────────
@@ -128,10 +116,8 @@ func _build_ui() -> void:
 	ver.add_theme_font_size_override("font_size", 13)
 	ver.modulate             = Color(0.42, 0.42, 0.42)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	ver.set_anchor_and_offset(SIDE_LEFT,   1.0, -55.0)
-	ver.set_anchor_and_offset(SIDE_TOP,    1.0, -28.0)
-	ver.set_anchor_and_offset(SIDE_RIGHT,  1.0,  -6.0)
-	ver.set_anchor_and_offset(SIDE_BOTTOM, 1.0,  -6.0)
+	ver.position             = Vector2(VP.x - 55.0, VP.y - 28.0)
+	ver.size                 = Vector2(49.0, 22.0)
 	root.add_child(ver)
 
 # ── Actions ─────────────────────────────────────────────────────────────────────

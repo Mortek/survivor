@@ -160,8 +160,15 @@ func _explode() -> void:
 	_die()
 
 # ── Combat ────────────────────────────────────────────────────────────────────
+func _is_on_screen() -> bool:
+	var vp         := get_viewport()
+	var screen_pos := vp.get_canvas_transform() * global_position
+	return Rect2(Vector2.ZERO, vp.get_visible_rect().size).has_point(screen_pos)
+
 func take_damage(amount: float) -> void:
 	if _dead:
+		return
+	if not _is_on_screen():
 		return
 	current_hp -= amount
 	_update_hp_bar()
@@ -254,8 +261,8 @@ static func _triangle_tex(size: int) -> ImageTexture:
 static func _cross_tex(size: int) -> ImageTexture:
 	var img       := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
-	var half      := size / 2
-	var thickness := maxi(size / 5, 2)
+	var half      := size >> 1
+	var thickness := maxi(int(size / 5.0), 2)
 	for y in size:
 		for x in size:
 			if abs(y - half) <= thickness or abs(x - half) <= thickness:
