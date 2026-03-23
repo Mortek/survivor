@@ -1,0 +1,18 @@
+# Godot 4 – generated cache (never commit)
+.godot/
+
+# Android build output & export presets (may contain keystore secrets)
+android/
+export_presets.cfg
+
+# IDE folders
+.idea/
+.vscode/
+
+# Claude Code local settings
+.claude/
+
+# Mono / C# (unused here, but safe to have)
+.mono/
+data_*/
+mono_crash.*.json

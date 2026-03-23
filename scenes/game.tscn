@@ -1,0 +1,275 @@
+[gd_scene load_steps=16 format=3 uid="uid://survivor_game"]
+
+[ext_resource type="Script" path="res://scripts/game.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/player.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/camera_shake.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/object_pool.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/spawner.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/ui_manager.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/virtual_joystick.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/upgrade_manager.gd" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/projectile.tscn" id="9"]
+[ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="10"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player"]
+radius = 10.0
+height = 28.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hpfill"]
+bg_color = Color(0.85, 0.1, 0.1, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hpbg"]
+bg_color = Color(0.2, 0.05, 0.05, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xpfill"]
+bg_color = Color(0.1, 0.7, 0.9, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xpbg"]
+bg_color = Color(0.05, 0.1, 0.2, 1)
+
+; ── Root ──────────────────────────────────────────────────────────────────────
+[node name="Game" type="Node2D"]
+script = ExtResource("1")
+
+; ── Background (fixed to screen via CanvasLayer -10) ─────────────────────────
+[node name="BackgroundLayer" type="CanvasLayer" parent="."]
+layer = -10
+
+[node name="BG" type="ColorRect" parent="BackgroundLayer"]
+color = Color(0.08, 0.08, 0.15, 1)
+size = Vector2(540, 960)
+
+; ── World (entities live here, camera moves through it) ──────────────────────
+[node name="World" type="Node2D" parent="."]
+
+[node name="Enemies" type="Node2D" parent="World"]
+
+[node name="Coins" type="Node2D" parent="World"]
+
+; ── Player ────────────────────────────────────────────────────────────────────
+[node name="Player" type="CharacterBody2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("2")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+shape = SubResource("CapsuleShape2D_player")
+
+[node name="Camera2D" type="Camera2D" parent="Player"]
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+script = ExtResource("3")
+
+[node name="AttackTimer" type="Timer" parent="Player"]
+wait_time = 1.0
+one_shot = false
+autostart = false
+
+[node name="IFramesTimer" type="Timer" parent="Player"]
+wait_time = 0.6
+one_shot = true
+autostart = false
+
+; ── Object Pools ──────────────────────────────────────────────────────────────
+[node name="ProjectilePool" type="Node" parent="."]
+script = ExtResource("4")
+scene = ExtResource("9")
+initial_size = 20
+
+; ── Spawner ───────────────────────────────────────────────────────────────────
+[node name="Spawner" type="Node" parent="."]
+script = ExtResource("5")
+enemy_scene = ExtResource("10")
+
+; ── UI (CanvasLayer) ──────────────────────────────────────────────────────────
+[node name="UI" type="CanvasLayer" parent="."]
+layer = 10
+process_mode = 3
+script = ExtResource("6")
+
+; ── HUD ───────────────────────────────────────────────────────────────────────
+[node name="HUD" type="Control" parent="UI"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+; Health Bar
+[node name="HealthBar" type="ProgressBar" parent="UI/HUD"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 210.0
+offset_bottom = 30.0
+min_value = 0.0
+max_value = 100.0
+value = 100.0
+show_percentage = false
+theme_override_styles/fill = SubResource("StyleBoxFlat_hpfill")
+theme_override_styles/background = SubResource("StyleBoxFlat_hpbg")
+
+; XP Bar (anchored to bottom, full width)
+[node name="XPBar" type="ProgressBar" parent="UI/HUD"]
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -14.0
+offset_bottom = 0.0
+min_value = 0.0
+max_value = 100.0
+value = 0.0
+show_percentage = false
+theme_override_styles/fill = SubResource("StyleBoxFlat_xpfill")
+theme_override_styles/background = SubResource("StyleBoxFlat_xpbg")
+
+; Timer (centered top)
+[node name="TimerLabel" type="Label" parent="UI/HUD"]
+offset_left = 210.0
+offset_top = 10.0
+offset_right = 360.0
+offset_bottom = 34.0
+horizontal_alignment = 1
+text = "00:00"
+theme_override_font_sizes/font_size = 22
+
+; Wave label
+[node name="WaveLabel" type="Label" parent="UI/HUD"]
+offset_left = 10.0
+offset_top = 34.0
+offset_right = 160.0
+offset_bottom = 56.0
+text = "Wave 1"
+theme_override_font_sizes/font_size = 14
+
+; Level label
+[node name="LevelLabel" type="Label" parent="UI/HUD"]
+offset_left = 10.0
+offset_top = 56.0
+offset_right = 160.0
+offset_bottom = 76.0
+text = "Lv 1"
+theme_override_font_sizes/font_size = 14
+
+; Coin label (top right area)
+[node name="CoinLabel" type="Label" parent="UI/HUD"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -130.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 34.0
+horizontal_alignment = 2
+text = "0"
+theme_override_font_sizes/font_size = 18
+
+; Pause Button (top right corner)
+[node name="PauseButton" type="Button" parent="UI/HUD"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -55.0
+offset_top = 4.0
+offset_right = -4.0
+offset_bottom = 50.0
+text = "⏸"
+
+; ── Virtual Joystick ──────────────────────────────────────────────────────────
+[node name="VirtualJoystick" type="Control" parent="UI"]
+process_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("7")
+
+[node name="Base" type="ColorRect" parent="UI/VirtualJoystick"]
+color = Color(1, 1, 1, 0.20)
+size = Vector2(130, 130)
+visible = false
+
+[node name="Thumb" type="ColorRect" parent="UI/VirtualJoystick"]
+color = Color(1, 1, 1, 0.50)
+size = Vector2(58, 58)
+visible = false
+
+; ── Upgrade Menu ──────────────────────────────────────────────────────────────
+[node name="UpgradeMenu" type="Control" parent="UI"]
+process_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+script = ExtResource("8")
+
+; Dark overlay
+[node name="Overlay" type="ColorRect" parent="UI/UpgradeMenu"]
+color = Color(0, 0, 0, 0.65)
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="UI/UpgradeMenu"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -165.0
+offset_right = 250.0
+offset_bottom = 165.0
+
+[node name="VBox" type="VBoxContainer" parent="UI/UpgradeMenu/Panel"]
+alignment = 1
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="UI/UpgradeMenu/Panel/VBox"]
+horizontal_alignment = 1
+text = "LEVEL UP!"
+theme_override_font_sizes/font_size = 26
+
+[node name="CardContainer" type="HBoxContainer" parent="UI/UpgradeMenu/Panel/VBox"]
+alignment = 1
+theme_override_constants/separation = 12
+
+; ── Game Over Screen ──────────────────────────────────────────────────────────
+[node name="GameOverScreen" type="Control" parent="UI"]
+process_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+
+[node name="Overlay" type="ColorRect" parent="UI/GameOverScreen"]
+color = Color(0, 0, 0, 0.75)
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="UI/GameOverScreen"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -190.0
+offset_top = -170.0
+offset_right = 190.0
+offset_bottom = 170.0
+
+[node name="VBox" type="VBoxContainer" parent="UI/GameOverScreen/Panel"]
+alignment = 1
+theme_override_constants/separation = 18
+
+[node name="GameOverLabel" type="Label" parent="UI/GameOverScreen/Panel/VBox"]
+horizontal_alignment = 1
+text = "GAME OVER"
+theme_override_font_sizes/font_size = 34
+
+[node name="TimeLabel" type="Label" parent="UI/GameOverScreen/Panel/VBox"]
+horizontal_alignment = 1
+text = "Time: 00:00"
+theme_override_font_sizes/font_size = 18
+
+[node name="LevelLabel" type="Label" parent="UI/GameOverScreen/Panel/VBox"]
+horizontal_alignment = 1
+text = "Level: 1"
+theme_override_font_sizes/font_size = 18
+
+[node name="RestartButton" type="Button" parent="UI/GameOverScreen/Panel/VBox"]
+custom_minimum_size = Vector2(160, 48)
+text = "PLAY AGAIN"
+theme_override_font_sizes/font_size = 18

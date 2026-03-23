@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3 uid="uid://survivor_coin"]
+
+[ext_resource type="Script" path="res://scripts/coin.gd" id="1"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_1"]
+radius = 8.0
+
+[node name="Coin" type="Area2D"]
+collision_layer = 8
+collision_mask = 1
+monitoring = true
+monitorable = false
+script = ExtResource("1")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_1")
