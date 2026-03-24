@@ -41,6 +41,10 @@ func setup(player: Node2D, container: Node) -> void:
 	_player    = player
 	_container = container
 
+func get_wave_time_remaining() -> float:
+	var effective := wave_duration * float(GameManager.stats.get("wave_speed_mult", 1.0))
+	return maxf(effective - _wave_timer, 0.0)
+
 # ── Processing ────────────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
 	if GameManager.state != GameManager.State.PLAYING:

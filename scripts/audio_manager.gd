@@ -37,6 +37,11 @@ func play_any(sound: String) -> void:
 	if _players.has(sound):
 		_players[sound].play()
 
+func play_pitched(sound: String, pitch: float) -> void:
+	if _players.has(sound):
+		_players[sound].pitch_scale = clampf(pitch, 0.5, 3.0)
+		_players[sound].play()
+
 # ── Private helpers ────────────────────────────────────────────────────────────
 func _add(snd: String, wav: AudioStreamWAV) -> void:
 	var p        := AudioStreamPlayer.new()

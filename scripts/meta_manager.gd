@@ -173,14 +173,6 @@ const PERMANENT_UPGRADES: Array = [
 		"cost_scale": 0,
 	},
 	{
-		"id":         "start_melee",
-		"name":       "Born Brawler",
-		"desc":       "Start each run with the Melee weapon unlocked",
-		"max_level":  1,
-		"base_cost":  600,
-		"cost_scale": 0,
-	},
-	{
 		"id":         "double_curse",
 		"name":       "Curse Seeker",
 		"desc":       "Curse offers show +1 extra option per level",
@@ -341,7 +333,7 @@ func apply_to_stats(stats: Dictionary) -> void:
 	lvl = get_upgrade_level("coin_magnet")
 	if lvl > 0:
 		stats["pickup_radius"]    = stats.get("pickup_radius", 60.0) + float(lvl) * 25.0
-		stats["magnet_orb_bonus"] = stats.get("magnet_orb_bonus", 0.0) + float(lvl) * 0.03
+		stats["magnet_orb_bonus"] = stats.get("magnet_orb_bonus", 0.0) + float(lvl) * 0.0025
 
 	lvl = get_upgrade_level("bounty_hunter")
 	if lvl > 0:
@@ -377,9 +369,6 @@ func apply_to_stats(stats: Dictionary) -> void:
 		stats["lightning_enabled"] = true
 		stats["lightning_level"]   = 1
 
-	if get_upgrade_level("start_melee") >= 1:
-		stats["melee_enabled"] = true
-		stats["melee_level"]   = 1
 
 # ── Achievements ──────────────────────────────────────────────────────────────
 func add_run_history(wave: int, kills: int, time: float, coins: int) -> void:

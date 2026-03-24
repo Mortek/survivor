@@ -22,13 +22,34 @@ func _build_ui() -> void:
 	bg.size     = VP
 	bg_layer.add_child(bg)
 
-	# Starfield
-	for _i in 50:
+	# Animated starfield
+	var star_rng := RandomNumberGenerator.new()
+	star_rng.seed = 7
+	for _i in 70:
 		var star := ColorRect.new()
-		star.size     = Vector2(randf_range(1.0, 2.5), randf_range(1.0, 2.5))
-		star.position = Vector2(randf_range(0.0, VP.x), randf_range(0.0, VP.y))
-		star.color    = Color(1.0, 1.0, 1.0, randf_range(0.15, 0.65))
+		var sz := star_rng.randf_range(1.0, 3.0)
+		star.size     = Vector2(sz, sz)
+		star.position = Vector2(star_rng.randf_range(0.0, VP.x), star_rng.randf_range(0.0, VP.y))
+		star.color    = Color(1.0, 1.0, 1.0, star_rng.randf_range(0.2, 0.8))
 		bg_layer.add_child(star)
+		# Twinkling pulse animation
+		var tw := star.create_tween().set_loops()
+		tw.tween_interval(star_rng.randf_range(0.0, 3.0))
+		tw.tween_property(star, "modulate:a", 1.0, star_rng.randf_range(0.5, 1.8)).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(star, "modulate:a", 0.1, star_rng.randf_range(0.5, 1.8)).set_trans(Tween.TRANS_SINE)
+	# Add a few large glowing orbs in the background
+	for _i in 4:
+		var orb := ColorRect.new()
+		var osiz := star_rng.randf_range(60.0, 120.0)
+		orb.size     = Vector2(osiz, osiz)
+		orb.position = Vector2(star_rng.randf_range(0.0, VP.x) - osiz * 0.5, star_rng.randf_range(0.0, VP.y) - osiz * 0.5)
+		var hue      := star_rng.randf_range(0.55, 0.75)
+		orb.color    = Color.from_hsv(hue, 0.6, 0.4, 0.08)
+		orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg_layer.add_child(orb)
+		var tw2 := orb.create_tween().set_loops()
+		tw2.tween_property(orb, "modulate:a", 1.0, star_rng.randf_range(2.0, 4.0)).set_trans(Tween.TRANS_SINE)
+		tw2.tween_property(orb, "modulate:a", 0.3, star_rng.randf_range(2.0, 4.0)).set_trans(Tween.TRANS_SINE)
 
 	# ── UI Layer ─────────────────────────────────────────────────────────────────
 	_ui_layer = CanvasLayer.new()
@@ -145,7 +166,7 @@ func _build_ui() -> void:
 
 	# ── Tip ─────────────────────────────────────────────────────────────────────
 	var tip := Label.new()
-	tip.text                 = "Tip: Reach evolution conditions to unlock\nCrimson Reaper, Death Orbit, or Thunder God"
+	tip.text                 = "Tip: Reach evolution conditions to unlock\nDeath Orbit or Thunder God!\nCollect Magnet Orbs to pull in all XP at once."
 	tip.add_theme_font_size_override("font_size", 13)
 	tip.modulate             = Color(0.55, 0.55, 0.65)
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -300,7 +321,7 @@ func _build_challenge_popup(curse_name: String) -> Control:
 	panel.add_child(vbox)
 
 	var title := Label.new()
-	title.text                 = "📅  DAILY CHALLENGE"
+	title.text                 = "DAILY CHALLENGE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 20)
 	title.modulate             = Color(1.0, 0.9, 0.2)
@@ -345,13 +366,22 @@ func _build_challenge_popup(curse_name: String) -> Control:
 
 	vbox.add_child(HSeparator.new())
 
+	# X close button — top right of panel
+	var close_x := Button.new()
+	close_x.text = "✕"
+	close_x.add_theme_font_size_override("font_size", 16)
+	close_x.custom_minimum_size = Vector2(32, 28)
+	close_x.position = Vector2(panel.position.x + pw - 36.0, panel.position.y + 4.0)
+	close_x.pressed.connect(root.queue_free)
+	root.add_child(close_x)
+
 	var btn_row := HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	btn_row.add_theme_constant_override("separation", 12)
 	vbox.add_child(btn_row)
 
 	var play_btn := Button.new()
-	play_btn.text = "PLAY"
+	play_btn.text = "▶  PLAY CHALLENGE"
 	play_btn.add_theme_font_size_override("font_size", 18)
 	play_btn.pressed.connect(func() -> void:
 		GameManager.daily_challenge_active = true
@@ -359,12 +389,6 @@ func _build_challenge_popup(curse_name: String) -> Control:
 		get_tree().change_scene_to_file("res://scenes/game.tscn")
 	)
 	btn_row.add_child(play_btn)
-
-	var cancel_btn := Button.new()
-	cancel_btn.text = "Cancel"
-	cancel_btn.add_theme_font_size_override("font_size", 16)
-	cancel_btn.pressed.connect(root.queue_free)
-	btn_row.add_child(cancel_btn)
 
 	return root
 

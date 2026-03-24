@@ -39,7 +39,7 @@ func _build_panel() -> void:
 
 	# Title
 	var title := Label.new()
-	title.text                 = "⚡  META UPGRADES"
+	title.text                 = "META UPGRADES"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 26)
 	outer.add_child(title)
@@ -73,7 +73,7 @@ func _build_panel() -> void:
 		["⚔  OFFENSE",  ["start_damage", "start_atk_speed", "start_crit", "start_multishot", "start_pierce"]],
 		["🛡  DEFENSE",  ["start_health", "start_armor", "start_regen", "start_lifesteal", "start_shields", "battle_hardened"]],
 		["✦  UTILITY",  ["start_speed", "xp_boost", "coin_bonus", "pickup_boost", "coin_magnet", "bounty_hunter"]],
-		["★  SPECIALS", ["lucky_start", "start_dash", "start_lightning", "start_melee", "double_curse"]],
+		["★  SPECIALS", ["lucky_start", "start_dash", "start_lightning", "double_curse"]],
 	]
 	var upg_map: Dictionary = {}
 	for upg in MetaManager.PERMANENT_UPGRADES:
@@ -109,16 +109,18 @@ func _build_panel() -> void:
 	)
 	bottom_row.add_child(dev_btn)
 
-	# Close button
-	var close_btn := Button.new()
-	close_btn.text = "CLOSE  ✕"
-	close_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	close_btn.add_theme_font_size_override("font_size", 18)
-	close_btn.pressed.connect(func() -> void:
+	# X close button — added to the main Control (self), positioned at top-right of panel
+	var close_x := Button.new()
+	close_x.text = "✕"
+	close_x.add_theme_font_size_override("font_size", 16)
+	close_x.custom_minimum_size = Vector2(32, 28)
+	close_x.process_mode = Node.PROCESS_MODE_ALWAYS
+	close_x.position = Vector2(panel.position.x + pw - 36.0, panel.position.y + 4.0)
+	close_x.pressed.connect(func() -> void:
 		shop_closed.emit()
 		queue_free()
 	)
-	bottom_row.add_child(close_btn)
+	add_child(close_x)
 
 func _build_row(upg: Dictionary, coins_lbl: Label) -> HBoxContainer:
 	var row  := HBoxContainer.new()

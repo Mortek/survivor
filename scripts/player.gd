@@ -64,7 +64,8 @@ func _ready() -> void:
 	GameManager.stats_changed.connect(_on_stats_changed)
 	_cache_stats()
 	if not sprite.texture:
-		sprite.texture = _solid_tex(32, 32, Color(0.27, 0.47, 1.0))
+		sprite.texture = _warrior_tex(32)
+		sprite.modulate = Color(0.35, 0.6, 1.0)
 	GameManager.level_changed.connect(func(_l: int) -> void: Input.vibrate_handheld(60))
 	GameManager.level_changed.connect(func(_l: int) -> void: _levelup_ring())
 
@@ -324,6 +325,44 @@ func _levelup_ring() -> void:
 			ring.queue_redraw()
 	, 0.0, 1.0, 0.55)
 	tw.tween_callback(ring.queue_free)
+
+static func _warrior_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (size - 1) * 0.5
+	var cy := (size - 1) * 0.5
+	# Body: octagonal shape
+	var r_body := size * 0.46
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var angle := atan2(dy, dx)
+			# Octagon
+			var sector := fmod(absf(angle) + PI / 8.0, PI / 4.0) - PI / 8.0
+			var oct_r  := r_body / cos(sector) * cos(PI / 8.0)
+			var d := sqrt(dx * dx + dy * dy)
+			if d <= oct_r * 0.94:
+				img.set_pixel(x, y, Color.WHITE)
+	# Helmet / head bump at top
+	var head_r := size * 0.18
+	var head_cy := cy - size * 0.28
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - head_cy
+			if dx*dx + dy*dy <= head_r * head_r:
+				img.set_pixel(x, y, Color.WHITE)
+	# Inner armor detail: horizontal line across middle
+	var arm_y := int(cy)
+	var arm_x1 := int(cx - size * 0.30)
+	var arm_x2 := int(cx + size * 0.30)
+	for px in range(arm_x1, arm_x2 + 1):
+		for py in range(arm_y - 1, arm_y + 2):
+			if px >= 0 and px < size and py >= 0 and py < size:
+				# Keep white but could add detail
+				pass
+	return ImageTexture.create_from_image(img)
 
 static func _solid_tex(w: int, h: int, color: Color) -> ImageTexture:
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)

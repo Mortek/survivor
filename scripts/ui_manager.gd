@@ -63,11 +63,12 @@ func _layout_hud() -> void:
 	xp_bar.custom_minimum_size = Vector2(0, 18)
 
 	# ── Timer: centered horizontally, just below health bar ──
-	timer_label.set_anchor_and_offset(SIDE_LEFT,   0.5, -60.0)
+	timer_label.set_anchor_and_offset(SIDE_LEFT,   0.5, -70.0)
 	timer_label.set_anchor_and_offset(SIDE_TOP,    0.0,  26.0)
-	timer_label.set_anchor_and_offset(SIDE_RIGHT,  0.5,  60.0)
+	timer_label.set_anchor_and_offset(SIDE_RIGHT,  0.5,  70.0)
 	timer_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0,  46.0)
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	timer_label.add_theme_font_size_override("font_size", 17)
 
 	# ── Wave: left column, row 1 ──
 	wave_label.set_anchor_and_offset(SIDE_LEFT,   0.0,  4.0)
@@ -81,18 +82,20 @@ func _layout_hud() -> void:
 	level_label.set_anchor_and_offset(SIDE_RIGHT,  0.0, 120.0)
 	level_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 62.0)
 
-	# ── Coin: left column, row 3 ──
+	# ── Coin: left column, row 3 (with extra gap from level row) ──
 	coin_label.set_anchor_and_offset(SIDE_LEFT,   0.0,  4.0)
-	coin_label.set_anchor_and_offset(SIDE_TOP,    0.0, 64.0)
-	coin_label.set_anchor_and_offset(SIDE_RIGHT,  0.0, 120.0)
-	coin_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 81.0)
+	coin_label.set_anchor_and_offset(SIDE_TOP,    0.0, 72.0)
+	coin_label.set_anchor_and_offset(SIDE_RIGHT,  0.0, 130.0)
+	coin_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 91.0)
+	coin_label.add_theme_font_size_override("font_size", 15)
 
-	# ── Kill count: left column, row 4 ──
+	# ── Kill count: left column, row 4 (directly below coin) ──
 	if kills_label:
 		kills_label.set_anchor_and_offset(SIDE_LEFT,   0.0,   4.0)
-		kills_label.set_anchor_and_offset(SIDE_TOP,    0.0,  83.0)
-		kills_label.set_anchor_and_offset(SIDE_RIGHT,  0.0, 120.0)
-		kills_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 100.0)
+		kills_label.set_anchor_and_offset(SIDE_TOP,    0.0,  93.0)
+		kills_label.set_anchor_and_offset(SIDE_RIGHT,  0.0, 130.0)
+		kills_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0, 112.0)
+		kills_label.add_theme_font_size_override("font_size", 15)
 
 func _process(_delta: float) -> void:
 	var s := int(GameManager.survival_time)
@@ -135,4 +138,4 @@ func _format_number(n: int) -> String:
 
 func _on_kills_changed(total: int) -> void:
 	if kills_label:
-		kills_label.text = "☠ " + str(total)
+		kills_label.text = "💀 " + str(total)

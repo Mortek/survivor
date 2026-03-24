@@ -242,9 +242,40 @@ func _ready() -> void:
 					GameManager.accept_curse(curse)
 					break
 
+	# ── Animated game background ──
+	_build_game_background()
+
 	# ── Lucky Star: offer free upgrade on first frame ──
 	if meta and meta.get_upgrade_level("lucky_start") >= 1:
 		call_deferred("_lucky_start_offer")
+
+# ── Game Background ───────────────────────────────────────────────────────────
+func _build_game_background() -> void:
+	var bg_layer := CanvasLayer.new()
+	bg_layer.layer = -10
+	add_child(bg_layer)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.04, 0.04, 0.10, 1.0)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg_layer.add_child(bg)
+
+	var vp := get_viewport_rect().size
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+	for _i in 60:
+		var star := ColorRect.new()
+		var sz   := rng.randf_range(1.0, 3.0)
+		star.size     = Vector2(sz, sz)
+		star.position = Vector2(rng.randf_range(0.0, vp.x), rng.randf_range(0.0, vp.y))
+		star.color    = Color(1.0, 1.0, 1.0, rng.randf_range(0.1, 0.6))
+		bg_layer.add_child(star)
+		# Pulse animation with random phase
+		var tw := star.create_tween().set_loops()
+		var phase := rng.randf_range(0.0, 3.0)
+		tw.tween_interval(phase)
+		tw.tween_property(star, "modulate:a", 1.0, rng.randf_range(0.8, 2.0)).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(star, "modulate:a", 0.2, rng.randf_range(0.8, 2.0)).set_trans(Tween.TRANS_SINE)
 
 # ── Lucky Star ────────────────────────────────────────────────────────────────
 func _lucky_start_offer() -> void:
@@ -496,12 +527,14 @@ func _on_enemy_spawned(enemy: Node) -> void:
 		_play_boss_intro(enemy)
 		_create_boss_hp_bar(enemy)
 
-func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int) -> void:
+func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int, hit_dir: Vector2 = Vector2.ZERO) -> void:
 	call_deferred("_spawn_coin", world_pos, xp)
-	call_deferred("_spawn_death_particles", world_pos, color)
+	# Compute approx bullet direction: from player toward enemy
+	var approx_dir := (world_pos - player.global_position).normalized()
+	call_deferred("_spawn_death_particles", world_pos, color, approx_dir)
 	# Bonus coin drop chance (Lucky Breaks meta upgrade)
 	var extra_drop: float = GameManager.stats.get("lucky_drop_chance", 0.0)
-	if randf() < 0.04 + extra_drop:
+	if randf() < 0.01 + GameManager.stats.get("magnet_orb_bonus", 0.0):
 		call_deferred("_spawn_magnet_orb", world_pos)
 	GameManager.add_kill()
 	player.on_kill()
@@ -580,7 +613,7 @@ func _create_boss_hp_bar(boss: Node) -> void:
 			if is_instance_valid(e) and is_instance_valid(_boss_hp_bar):
 				_boss_hp_bar.value = (e.current_hp / e.max_hp) * 100.0
 		)
-		e.died.connect(func(_pos, _xp, _col, _type) -> void:
+		e.died.connect(func(_pos, _xp, _col, _type, _hdir) -> void:
 			if is_instance_valid(_boss_hp_container):
 				var tw := _boss_hp_container.create_tween()
 				tw.tween_property(_boss_hp_container, "modulate:a", 0.0, 0.5)
@@ -822,10 +855,8 @@ func _spawn_magnet_orb(world_pos: Vector2) -> void:
 	visual.queue_redraw()
 	particle_timer.start()
 
-	# Immediately pull all coins toward the player
 	for coin in coins_node.get_children():
-		if coin.has_method("attract_magnet"):
-			coin.attract_magnet()
+		coin.attract_magnet()
 
 	orb.body_entered.connect(func(body: Node) -> void:
 		if not body.is_in_group("player"):
@@ -834,7 +865,23 @@ func _spawn_magnet_orb(world_pos: Vector2) -> void:
 		if _audio:
 			_audio.play_any("coin_attract")
 		orb.queue_free()
+		# Zoom out camera
+		if camera:
+			var tw_zoom := camera.create_tween()
+			tw_zoom.tween_property(camera, "zoom", Vector2(0.72, 0.72), 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			# Poll until all coins are collected, then zoom back in
+			_wait_for_coins_then_zoom_in()
 	)
+
+func _wait_for_coins_then_zoom_in() -> void:
+	var elapsed := 0.0
+	while elapsed < 5.0 and coins_node.get_child_count() > 0:
+		await get_tree().process_frame
+		elapsed += get_process_delta_time()
+	# Zoom back in
+	if camera and is_instance_valid(camera):
+		var tw_in := camera.create_tween()
+		tw_in.tween_property(camera, "zoom", Vector2(1.0, 1.0), 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _emit_magnet_particle(world_pos: Vector2, color: Color) -> void:
 	var p := ColorRect.new()
@@ -850,11 +897,11 @@ func _emit_magnet_particle(world_pos: Vector2, color: Color) -> void:
 	tw.tween_property(p, "modulate:a", 0.0, 0.55)
 	tw.tween_callback(p.queue_free).set_delay(0.55)
 
-func _spawn_death_particles(world_pos: Vector2, color: Color) -> void:
+func _spawn_death_particles(world_pos: Vector2, color: Color, hit_dir: Vector2 = Vector2.ZERO) -> void:
 	var p := DeathParticles.new()
 	_get_fx().add_child(p)
 	p.global_position = world_pos
-	p.setup(color)
+	p.setup(color, hit_dir)
 
 func _spawn_damage_number(world_pos: Vector2, amount: float) -> void:
 	if not _damage_numbers_enabled:
@@ -905,6 +952,7 @@ func _position_pause_overlay() -> void:
 
 # ── Stats Button & Popup ───────────────────────────────────────────────────────
 var _stats_popup: Control = null
+var _stats_owns_pause: bool = false
 
 func _build_stats_button() -> void:
 	var btn := Button.new()
@@ -922,17 +970,25 @@ func _position_stats_btn(btn: Button) -> void:
 	var vp := get_viewport_rect().size
 	btn.position = Vector2(vp.x - 146.0, 26.0)
 
-func _open_stats_popup() -> void:
+func _close_stats_popup() -> void:
 	if _stats_popup:
 		_stats_popup.queue_free()
 		_stats_popup = null
-		if GameManager.state == GameManager.State.PAUSED:
-			GameManager.state = GameManager.State.PLAYING
-			get_tree().paused = false
+	if _stats_owns_pause:
+		_stats_owns_pause = false
+		GameManager.state = GameManager.State.PLAYING
+		get_tree().paused = false
+
+func _open_stats_popup() -> void:
+	if _stats_popup:
+		_close_stats_popup()
 		return
-	if GameManager.state == GameManager.State.PLAYING:
-		GameManager.state = GameManager.State.PAUSED
-		get_tree().paused = true
+	# Don't allow opening stats if paused by the pause button (not by this popup)
+	if GameManager.state == GameManager.State.PAUSED:
+		return
+	_stats_owns_pause = true
+	GameManager.state = GameManager.State.PAUSED
+	get_tree().paused = true
 	_stats_popup = _build_stats_popup()
 	ui.add_child(_stats_popup)
 
@@ -951,12 +1007,8 @@ func _build_stats_popup() -> Control:
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.gui_input.connect(func(ev: InputEvent) -> void:
-		if ev is InputEventMouseButton and ev.pressed and _stats_popup:
-			_stats_popup.queue_free()
-			_stats_popup = null
-			if GameManager.state == GameManager.State.PAUSED:
-				GameManager.state = GameManager.State.PLAYING
-				get_tree().paused = false
+		if ev is InputEventMouseButton and ev.pressed:
+			_close_stats_popup()
 	)
 	root.add_child(bg)
 
@@ -973,14 +1025,8 @@ func _build_stats_popup() -> Control:
 	close_x.add_theme_font_size_override("font_size", 16)
 	close_x.custom_minimum_size = Vector2(30, 28)
 	close_x.z_index = 30
-	close_x.position = Vector2(panel.position.x + pw - 32.0, panel.position.y - 14.0)
-	close_x.pressed.connect(func() -> void:
-		_stats_popup.queue_free()
-		_stats_popup = null
-		if GameManager.state == GameManager.State.PAUSED:
-			GameManager.state = GameManager.State.PLAYING
-			get_tree().paused = false
-	)
+	close_x.position = Vector2(panel.position.x + pw - 38.0, panel.position.y + 4.0)
+	close_x.pressed.connect(_close_stats_popup)
 	root.add_child(close_x)
 
 	var vbox := VBoxContainer.new()
@@ -1209,7 +1255,7 @@ func _build_settings_overlay() -> Control:
 	close_x.add_theme_font_size_override("font_size", 16)
 	close_x.custom_minimum_size = Vector2(30, 28)
 	close_x.z_index = 30
-	close_x.position = Vector2(panel.position.x + pw - 32.0, panel.position.y - 14.0)
+	close_x.position = Vector2(panel.position.x + pw - 38.0, panel.position.y + 4.0)
 	close_x.pressed.connect(func() -> void:
 		root.queue_free()
 		_settings_overlay = null

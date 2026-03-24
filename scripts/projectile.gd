@@ -18,9 +18,24 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	lifetime_timer.timeout.connect(_on_lifetime_timeout)
 	if not sprite.texture:
-		var img := Image.create(14, 6, false, Image.FORMAT_RGBA8)
-		img.fill(Color(0.2, 1.0, 1.0))
+		# Glowing elongated projectile: bright cyan core with glow falloff
+		var pw := 16
+		var ph := 7
+		var img := Image.create(pw, ph, false, Image.FORMAT_RGBA8)
+		img.fill(Color.TRANSPARENT)
+		var cx_f := (pw - 1) * 0.5
+		var cy_f := (ph - 1) * 0.5
+		for py in ph:
+			for px in pw:
+				var nx := absf(float(px) - cx_f) / (cx_f + 0.001)
+				var ny := absf(float(py) - cy_f) / (cy_f + 0.001)
+				var d  := nx * nx * 0.6 + ny * ny
+				if d <= 1.0:
+					var intensity := 1.0 - d
+					var bright := Color(0.4 + intensity * 0.6, 1.0, 1.0, intensity * intensity)
+					img.set_pixel(px, py, bright)
 		sprite.texture = ImageTexture.create_from_image(img)
+		sprite.scale   = Vector2(1.2, 1.2)
 
 func launch(direction: Vector2, damage: int, speed: float) -> void:
 	_damage           = damage
@@ -50,7 +65,7 @@ func _on_body_entered(body: Node) -> void:
 		dmg *= 2.0
 		GameManager.add_crit()
 
-	body.take_damage(dmg)
+	body.take_damage(dmg, _velocity.normalized())
 
 	if _knockback > 0.0 and body.has_method("apply_knockback"):
 		body.apply_knockback(_velocity.normalized() * _knockback)

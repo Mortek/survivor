@@ -21,10 +21,13 @@ func _show_upgrades(choices: Array) -> void:
 	# Hide the scene panel; we manage layout entirely in code
 	$Panel.hide()
 
-	# Remove any previously built overlay
+	# Remove any previously built overlay and old ColorRects
 	var old := get_node_or_null("DynamicPanel")
 	if old:
 		old.queue_free()
+	for ch in get_children():
+		if ch is ColorRect:
+			ch.queue_free()
 
 	# ── Dark overlay ──────────────────────────────────────────────────────────
 	var overlay := ColorRect.new()
@@ -96,6 +99,14 @@ func _build_card(upgrade: Dictionary) -> PanelContainer:
 	name_lbl.add_theme_font_size_override("font_size", 16)
 	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(name_lbl)
+
+	var uid: String = upgrade.get("id", "")
+	if not uid.is_empty() and not GameManager.is_upgrade_taken(uid):
+		var badge := Label.new()
+		badge.text     = "✦ NEW"
+		badge.add_theme_font_size_override("font_size", 11)
+		badge.modulate = Color(0.3, 1.0, 0.5)
+		info.add_child(badge)
 
 	var desc_lbl := Label.new()
 	desc_lbl.text          = upgrade["desc"]

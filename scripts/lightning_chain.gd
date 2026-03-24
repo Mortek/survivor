@@ -100,22 +100,35 @@ func _thunder_aoe(pos: Vector2, dmg: int, already_hit: Array, enemies: Array) ->
 
 # ── Visuals ───────────────────────────────────────────────────────────────────
 func _draw_bolt(from: Vector2, to: Vector2) -> void:
-	var line               := Line2D.new()
-	line.z_index           = 10
-	line.width             = 2.5
-	line.default_color     = Color(0.55, 0.88, 1.0, 1.0)
-	line.antialiased       = true
-	line.add_point(from)
-	for i in range(1, 8):
-		var t  := float(i) / 8.0
+	# Draw multiple layered lines for a glowing effect
+	var points: Array[Vector2] = []
+	points.append(from)
+	for i in range(1, 9):
+		var t  := float(i) / 9.0
 		var p  := from.lerp(to, t)
-		p += Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
-		line.add_point(p)
-	line.add_point(to)
+		p += Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
+		points.append(p)
+	points.append(to)
+
+	var glow := _create_line_layer(points,  9, 6.0, Color(0.3,  0.75, 1.0, 0.25))
+	var mid  := _create_line_layer(points, 10, 3.0, Color(0.55, 0.9,  1.0, 0.75))
+	var core := _create_line_layer(points, 11, 1.2, Color(0.85, 1.0,  1.0, 1.0))
+
+	for line: Line2D in [glow, mid, core]:
+		var tw: Tween = line.create_tween()
+		tw.tween_property(line, "modulate:a", 0.0, 0.28)
+		tw.tween_callback(line.queue_free)
+
+func _create_line_layer(points: Array[Vector2], z: int, w: float, col: Color) -> Line2D:
+	var line := Line2D.new()
+	line.z_index       = z
+	line.width         = w
+	line.default_color = col
+	line.antialiased   = true
+	for pt in points:
+		line.add_point(pt)
 	get_tree().current_scene.add_child(line)
-	var tw := line.create_tween()
-	tw.tween_property(line, "modulate:a", 0.0, 0.22)
-	tw.tween_callback(line.queue_free)
+	return line
 
 func _draw_aoe_ring(pos: Vector2) -> void:
 	# Draw an expanding ring at the AOE position

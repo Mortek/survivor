@@ -5,7 +5,7 @@ extends CharacterBody2D
 ## Any enemy can also be marked as an Elite for 3× HP and bonus XP.
 
 # ── Signals ───────────────────────────────────────────────────────────────────
-signal died(world_position: Vector2, xp_value: int, color: Color, enemy_type: int)
+signal died(world_position: Vector2, xp_value: int, color: Color, enemy_type: int, hit_dir: Vector2)
 signal hit_taken(world_position: Vector2, amount: float)
 signal split_requested(world_position: Vector2)   # emitted by SPLITTER on death
 
@@ -41,8 +41,9 @@ var dmg:        int   = 10
 var xp_value:   int   = 10
 var _base_color: Color
 var _player: Node2D  = null
-var _dead: bool      = false
-var is_elite: bool   = false
+var _dead: bool         = false
+var is_elite: bool      = false
+var _last_hit_dir: Vector2 = Vector2.ZERO
 
 # ── Status effects ────────────────────────────────────────────────────────────
 var _slow_timer:       float = 0.0
@@ -155,6 +156,8 @@ func activate(player: Node2D, wave_multiplier: float) -> void:
 	_charger_dir      = Vector2.ZERO
 
 	_update_hp_bar()
+	if hp_bar:
+		hp_bar.hide()
 
 # ── AI Movement ───────────────────────────────────────────────────────────────
 func _physics_process(delta: float) -> void:
@@ -315,11 +318,14 @@ func _is_on_screen() -> bool:
 	var screen_pos := vp.get_canvas_transform() * global_position
 	return Rect2(Vector2.ZERO, vp.get_visible_rect().size).has_point(screen_pos)
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, hit_dir: Vector2 = Vector2.ZERO) -> void:
 	if _dead:
 		return
+	_last_hit_dir = hit_dir
 	if not _is_on_screen():
 		return
+	if hp_bar and not hp_bar.visible:
+		hp_bar.show()
 	# Shielder absorbs the first hit
 	if _shield_active:
 		_shield_active = false
@@ -357,7 +363,13 @@ func _die() -> void:
 		return
 	_dead = true
 	remove_from_group("enemies")
-	died.emit(global_position, xp_value, _base_color, int(enemy_type))
+	# Brief slow-motion punch on death (skip SWARM and BOSS — boss has its own hitpause)
+	if enemy_type != Type.SWARM and enemy_type != Type.BOSS:
+		Engine.time_scale = 0.35
+		get_tree().create_timer(0.06, true, false, true).timeout.connect(
+			func() -> void: if Engine.time_scale < 0.9: Engine.time_scale = 1.0
+		)
+	died.emit(global_position, xp_value, _base_color, int(enemy_type), _last_hit_dir)
 	if enemy_type == Type.SPLITTER:
 		split_requested.emit(global_position)
 	queue_free()
@@ -382,34 +394,212 @@ func _on_damage_area_body_entered(body: Node) -> void:
 ## Colour is applied separately via sprite.modulate.
 static func _shape_tex(type: int) -> ImageTexture:
 	match type:
-		Type.BASIC:    return _circle_tex(26)
-		Type.FAST:     return _diamond_tex(14, 22)
-		Type.TANK:     return _circle_tex(34)
-		Type.BOSS:     return _circle_tex(26)   # Boss uses sprite.scale = 2.5
+		Type.BASIC:    return _spiky_circle_tex(26)
+		Type.FAST:     return _arrowhead_tex(16, 24)
+		Type.TANK:     return _armored_hex_tex(34)
+		Type.BOSS:     return _star_shape_tex(26, 6)
 		Type.SPLITTER: return _triangle_tex(26)
-		Type.EXPLODER: return _cross_tex(22)
+		Type.EXPLODER: return _bomb_tex(22)
 		Type.SHIELDER: return _hexagon_tex(28)
-		Type.HEALER:      return _star_tex(28)
-		Type.SWARM:       return _circle_tex(12)
-		Type.TELEPORTER:  return _ring_tex(24, 5)
-		Type.CHARGER:     return _diamond_tex(12, 26)
-		_:                return _circle_tex(26)
+		Type.HEALER:      return _cross_plus_tex(28)
+		Type.SWARM:       return _teardrop_tex(14)
+		Type.TELEPORTER:  return _ring_dot_tex(24, 4)
+		Type.CHARGER:     return _wedge_tex(14, 28)
+		_:                return _spiky_circle_tex(26)
 
-static func _ring_tex(size: int, thickness: int) -> ImageTexture:
+## Spiked circle — base enemy
+static func _spiky_circle_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (size - 1) * 0.5
+	var cy := (size - 1) * 0.5
+	var r_outer := size * 0.5 - 0.5
+	var r_inner := r_outer * 0.62
+	var spikes  := 8
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var d  := sqrt(dx * dx + dy * dy)
+			if d < 0.5:
+				img.set_pixel(x, y, Color.WHITE)
+				continue
+			var angle := atan2(dy, dx)
+			# Spike contribution: radius oscillates between inner and outer
+			var spike_angle := fmod(angle + TAU, TAU / float(spikes))
+			var t := absf(spike_angle - (TAU / float(spikes)) * 0.5) / (TAU / float(spikes) * 0.5)
+			var r_at_angle: float = lerpf(r_outer, r_inner, t * t * 0.45)
+			if d <= r_at_angle:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+## Arrowhead pointing up — fast enemy
+static func _arrowhead_tex(w: int, h: int) -> ImageTexture:
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (w - 1) * 0.5
+	# Upper triangle (arrowhead)
+	var arrow_h := int(h * 0.6)
+	for y in arrow_h:
+		var t      := float(y) / float(arrow_h)
+		var half_w := t * cx
+		for x in w:
+			if absf(float(x) - cx) <= half_w:
+				img.set_pixel(x, y, Color.WHITE)
+	# Lower shaft
+	var shaft_w := int(w * 0.35)
+	var sx := int(cx - shaft_w * 0.5)
+	var ex := int(cx + shaft_w * 0.5)
+	for y in range(arrow_h, h):
+		for x in range(sx, ex + 1):
+			if x >= 0 and x < w:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+## Armored hexagon (hex with inner ring) — tank
+static func _armored_hex_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (size - 1) * 0.5
+	var cy := (size - 1) * 0.5
+	var r  := size * 0.5 - 0.5
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var angle := atan2(dy, dx)
+			var hex_r := r * cos(fmod(absf(angle) + PI / 6.0, PI / 3.0) - PI / 6.0)
+			var d := sqrt(dx * dx + dy * dy)
+			if d <= hex_r:
+				# Fill body, but leave inner cutout ring for armor look
+				var inner := hex_r * 0.55
+				if d > inner * 0.65 or d <= inner * 0.3:
+					img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+## 6-pointed star — boss
+static func _star_shape_tex(size: int, points: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx      := (size - 1) * 0.5
+	var cy      := (size - 1) * 0.5
+	var r_outer := size * 0.5 - 0.5
+	var r_inner := r_outer * 0.42
+	for y in size:
+		for x in size:
+			var dx    := float(x) - cx
+			var dy    := float(y) - cy
+			var d     := sqrt(dx * dx + dy * dy)
+			var angle := atan2(dy, dx)
+			# Interpolate radius between inner and outer based on angle
+			var sector_angle := TAU / float(points)
+			var a_mod := fmod(angle + TAU + sector_angle * 0.5, sector_angle) - sector_angle * 0.5
+			var t     := absf(a_mod) / (sector_angle * 0.5)
+			var r_star: float = lerpf(r_outer, r_inner, t)
+			if d <= r_star:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+## Bomb cross with rounded tips — exploder
+static func _bomb_tex(size: int) -> ImageTexture:
+	var img       := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var half      := size >> 1
+	var thickness := maxi(int(size / 4.0), 2)
+	var tip_r     := float(thickness) * 0.9
+	for y in size:
+		for x in size:
+			var dx: int = abs(x - half)
+			var dy: int = abs(y - half)
+			if dx <= thickness or dy <= thickness:
+				img.set_pixel(x, y, Color.WHITE)
+			# Round tips
+			for tip in [[half, 1], [half, size-2], [1, half], [size-2, half]]:
+				var tdx := float(x) - float(tip[0])
+				var tdy := float(y) - float(tip[1])
+				if sqrt(tdx*tdx + tdy*tdy) <= tip_r:
+					img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+## Medical cross (healer) — wider plus arms
+static func _cross_plus_tex(size: int) -> ImageTexture:
+	var img     := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx      := int((size - 1) / 2)
+	var arm_w   := maxi(int(size * 0.28), 3)
+	var arm_len := int(size * 0.42)
+	# Horizontal arm
+	for y in range(cx - arm_w, cx + arm_w + 1):
+		for x in range(cx - arm_len, cx + arm_len + 1):
+			if x >= 0 and x < size and y >= 0 and y < size:
+				img.set_pixel(x, y, Color.WHITE)
+	# Vertical arm
+	for x in range(cx - arm_w, cx + arm_w + 1):
+		for y in range(cx - arm_len, cx + arm_len + 1):
+			if x >= 0 and x < size and y >= 0 and y < size:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+## Teardrop pointing down — swarm enemy
+static func _teardrop_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (size - 1) * 0.5
+	# Upper circle
+	var circle_r := size * 0.38
+	var circle_cy := size * 0.40
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - circle_cy
+			if dx*dx + dy*dy <= circle_r * circle_r:
+				img.set_pixel(x, y, Color.WHITE)
+	# Lower pointed tail
+	var tail_start := int(circle_cy + circle_r * 0.7)
+	for y in range(tail_start, size):
+		var t      := float(y - tail_start) / maxf(float(size - 1 - tail_start), 1.0)
+		var half_w := (1.0 - t) * circle_r * 0.55
+		for x in range(int(cx - half_w), int(cx + half_w) + 1):
+			if x >= 0 and x < size:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+## Ring with center dot — teleporter
+static func _ring_dot_tex(size: int, thickness: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx      := (size - 1) * 0.5
 	var cy      := (size - 1) * 0.5
 	var r_outer := size * 0.5 - 0.5
 	var r_inner := r_outer - float(thickness)
+	var dot_r   := r_inner * 0.28
 	for y in size:
 		for x in size:
-			var dx := x - cx
-			var dy := y - cy
+			var dx := float(x) - cx
+			var dy := float(y) - cy
 			var d2 := dx * dx + dy * dy
 			if d2 <= r_outer * r_outer and d2 >= r_inner * r_inner:
 				img.set_pixel(x, y, Color.WHITE)
+			elif d2 <= dot_r * dot_r:
+				img.set_pixel(x, y, Color.WHITE)
 	return ImageTexture.create_from_image(img)
+
+## Aggressive wedge/arrowhead pointing down — charger
+static func _wedge_tex(w: int, h: int) -> ImageTexture:
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (w - 1) * 0.5
+	# Wide top, narrow bottom (aggressive wedge)
+	for y in h:
+		var t      := float(y) / maxf(float(h - 1), 1.0)
+		var half_w := (1.0 - t * 0.85) * cx
+		for x in w:
+			if absf(float(x) - cx) <= half_w:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
+
+static func _ring_tex(size: int, thickness: int) -> ImageTexture:
+	return _ring_dot_tex(size, thickness)
 
 static func _circle_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
