@@ -73,7 +73,7 @@ func _build_ui() -> void:
 		root.add_child(coin_lbl)
 
 		var ach_lbl := Label.new()
-		ach_lbl.text                 = "Achievements: %d / 8" % meta.achievements.size()
+		ach_lbl.text                 = "Achievements: %d / 11" % meta.achievements.size()
 		ach_lbl.add_theme_font_size_override("font_size", 15)
 		ach_lbl.modulate             = Color(0.72, 0.72, 0.72)
 		ach_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -90,6 +90,22 @@ func _build_ui() -> void:
 			best_lbl.position             = Vector2(20.0, 330.0)
 			best_lbl.size                 = Vector2(VP.x - 40.0, 22.0)
 			root.add_child(best_lbl)
+
+		# Recent run history
+		var history: Array = meta.get_run_history()
+		for i in mini(history.size(), 3):
+			var run: Dictionary = history[i]
+			var hist_lbl := Label.new()
+			hist_lbl.text = "#%d  Wave %d  ·  %d kills  ·  %02d:%02d" % [
+				i + 1, run.get("wave", 0), run.get("kills", 0),
+				int(run.get("time", 0.0) / 60.0), int(run.get("time", 0.0)) % 60
+			]
+			hist_lbl.add_theme_font_size_override("font_size", 12)
+			hist_lbl.modulate             = Color(0.55, 0.65, 0.75)
+			hist_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			hist_lbl.position             = Vector2(20.0, 356.0 + float(i) * 18.0)
+			hist_lbl.size                 = Vector2(VP.x - 40.0, 18.0)
+			root.add_child(hist_lbl)
 
 	# ── PLAY button ──────────────────────────────────────────────────────────────
 	var play_btn := Button.new()
@@ -140,7 +156,7 @@ func _build_ui() -> void:
 
 	# ── Version ──────────────────────────────────────────────────────────────────
 	var ver := Label.new()
-	ver.text                 = "v0.2"
+	ver.text                 = "v0.3"
 	ver.add_theme_font_size_override("font_size", 13)
 	ver.modulate             = Color(0.42, 0.42, 0.42)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

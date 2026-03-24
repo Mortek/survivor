@@ -50,7 +50,10 @@ func _show_upgrades(choices: Array) -> void:
 
 	# Title
 	var title := Label.new()
-	title.text                 = "LEVEL UP!  Lvl %d" % GameManager.current_level
+	var title_str := GameManager._upgrade_title
+	if title_str.is_empty():
+		title_str = "LEVEL UP!  Lvl %d" % GameManager.current_level
+	title.text                 = title_str
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 20)
 	outer.add_child(title)

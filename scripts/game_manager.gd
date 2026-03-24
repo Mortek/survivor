@@ -83,8 +83,15 @@ var stats: Dictionary = {
 	"dash_enabled":       false,
 	"wave_speed_mult":    1.0,
 	"corruption_active":  false,
+	# New mechanics
+	"dmg_reduction":      0.0,   # fraction of damage absorbed (0.0–0.5)
+	"battle_cry":         false, # kills grant a brief speed burst
+	"chain_explosion":    0.0,   # chance to explode on kill, dealing 50% dmg nearby
+	"elite_dmg_bonus":    0.0,   # bonus damage multiplier vs elite enemies
+	"lucky_drop_chance":  0.0,   # bonus coin drop chance
 }
-var _default_stats: Dictionary
+var _default_stats:    Dictionary
+var _upgrade_title:    String = ""
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -119,15 +126,26 @@ func _level_up() -> void:
 	xp_to_next    = int(xp_to_next * 1.28)
 	level_changed.emit(current_level)
 	_check_achievements()
+	_upgrade_title = "LEVEL UP!  Lvl %d" % current_level
 	state = State.LEVEL_UP
 	get_tree().paused = true
 	upgrade_available.emit(_pick_upgrades(3))
 
 ## Offer a free upgrade card without incrementing the level (used by Lucky Star).
 func offer_free_upgrade() -> void:
+	_upgrade_title = "FREE UPGRADE"
 	state = State.LEVEL_UP
 	get_tree().paused = true
 	upgrade_available.emit(_pick_upgrades(3))
+
+## Offer 5 upgrade choices as a milestone wave reward.
+func offer_milestone_upgrade() -> void:
+	if state != State.PLAYING:
+		return
+	_upgrade_title = "WAVE %d MILESTONE — Choose 1 of 5" % wave
+	state = State.LEVEL_UP
+	get_tree().paused = true
+	upgrade_available.emit(_pick_upgrades(5))
 
 func _pick_upgrades(n: int) -> Array:
 	var pool := _upgrade_pool.filter(func(u: Dictionary) -> bool:
@@ -621,5 +639,66 @@ var _upgrade_pool: Array = [
 		"apply": func() -> void:
 			stats["max_health"] = maxi(stats.get("max_health", 100) - 20, 20)
 			stats["damage"]     += 25,
+	},
+	# ── More mechanics ──────────────────────────────────────────────────────────
+	{
+		"id":    "overcharged",
+		"name":  "Overcharged",
+		"desc":  "+50 Damage\n−0.2 Attack Speed",
+		"apply": func() -> void:
+			stats["damage"]       += 50
+			stats["attack_speed"]  = maxf(stats.get("attack_speed", 1.0) - 0.2, 0.2),
+	},
+	{
+		"id":    "gunslinger",
+		"name":  "Gunslinger",
+		"desc":  "+0.6 Attack Speed\n−10 Damage",
+		"apply": func() -> void:
+			stats["attack_speed"]  = stats.get("attack_speed", 1.0) + 0.6
+			stats["damage"]        = maxi(stats.get("damage", 10) - 10, 1),
+	},
+	{
+		"id":        "damage_guard",
+		"name":      "Damage Guard",
+		"desc":      "Take 20% less damage\n(stacks up to 50%)",
+		"condition": func() -> bool: return stats.get("dmg_reduction", 0.0) < 0.40,
+		"apply":     func() -> void: stats["dmg_reduction"] = minf(stats.get("dmg_reduction", 0.0) + 0.20, 0.50),
+	},
+	{
+		"id":        "battle_cry",
+		"name":      "Battle Cry",
+		"desc":      "Each kill grants +30 speed\nfor 3 seconds",
+		"condition": func() -> bool: return not stats.get("battle_cry", false),
+		"apply":     func() -> void: stats["battle_cry"] = true,
+	},
+	{
+		"id":    "soul_eater",
+		"name":  "Soul Eater",
+		"desc":  "+8 HP per kill",
+		"apply": func() -> void: stats["lifesteal"] = stats.get("lifesteal", 0.0) + 8.0,
+	},
+	{
+		"id":        "voltaic_surge",
+		"name":      "Voltaic Surge",
+		"desc":      "Lightning: +1 level, +20% Atk Speed",
+		"condition": func() -> bool: return stats.get("lightning_enabled", false) and stats.get("lightning_level", 1) < 5,
+		"apply":     func() -> void:
+			stats["lightning_level"] = mini(stats.get("lightning_level", 1) + 1, 5)
+			stats["attack_speed"]    = stats.get("attack_speed", 1.0) * 1.2,
+	},
+	{
+		"id":        "chain_reaction",
+		"name":      "Chain Reaction",
+		"desc":      "+25% chance on kill to explode\ndealing 50% damage to nearby enemies",
+		"condition": func() -> bool: return stats.get("chain_explosion", 0.0) < 0.75,
+		"apply":     func() -> void: stats["chain_explosion"] = minf(stats.get("chain_explosion", 0.0) + 0.25, 1.0),
+	},
+	{
+		"id":    "titan_edge",
+		"name":  "Titan's Edge",
+		"desc":  "+6 Armor\n+20 Max HP",
+		"apply": func() -> void:
+			stats["armor"]      = stats.get("armor", 0) + 6
+			stats["max_health"] += 20,
 	},
 ]

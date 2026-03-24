@@ -188,6 +188,47 @@ const PERMANENT_UPGRADES: Array = [
 		"base_cost":  500,
 		"cost_scale": 450,
 	},
+	# ── Advanced ────────────────────────────────────────────────────────────────
+	{
+		"id":         "resilience",
+		"name":       "Iron Will",
+		"desc":       "−8% damage taken per level",
+		"max_level":  5,
+		"base_cost":  200,
+		"cost_scale": 180,
+	},
+	{
+		"id":         "elite_hunter",
+		"name":       "Elite Hunter",
+		"desc":       "+15% damage vs elite enemies per level",
+		"max_level":  5,
+		"base_cost":  180,
+		"cost_scale": 160,
+	},
+	{
+		"id":         "lucky_drops",
+		"name":       "Lucky Breaks",
+		"desc":       "+8% bonus coin drop chance per level",
+		"max_level":  5,
+		"base_cost":  100,
+		"cost_scale": 90,
+	},
+	{
+		"id":         "explosive_start",
+		"name":       "Explosive Start",
+		"desc":       "Start each run with Chain Reaction unlocked",
+		"max_level":  1,
+		"base_cost":  600,
+		"cost_scale": 0,
+	},
+	{
+		"id":         "wave_veteran",
+		"name":       "Wave Veteran",
+		"desc":       "+10 Max HP per 5 waves survived (applied at run start based on best wave)",
+		"max_level":  5,
+		"base_cost":  150,
+		"cost_scale": 130,
+	},
 ]
 
 # ── Runtime State ──────────────────────────────────────────────────────────────
@@ -197,6 +238,9 @@ var achievements:        Dictionary = {}   # id → true
 var best_wave:  int   = 0
 var best_kills: int   = 0
 var best_time:  float = 0.0
+var run_history:     Array = []   # Array of {wave, kills, time, coins}
+var tutorial_done:   bool  = false
+const MAX_RUN_HISTORY := 5
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -304,6 +348,27 @@ func apply_to_stats(stats: Dictionary) -> void:
 		stats["coin_mult"]     = stats.get("coin_mult", 1.0) + float(lvl) * 0.20
 		stats["xp_multiplier"] = stats.get("xp_multiplier", 1.0) + float(lvl) * 0.20
 
+	# ── Advanced ───────────────────────────────────────────────────────────────
+	lvl = get_upgrade_level("resilience")
+	if lvl > 0:
+		stats["dmg_reduction"] = minf(stats.get("dmg_reduction", 0.0) + float(lvl) * 0.08, 0.50)
+
+	lvl = get_upgrade_level("elite_hunter")
+	if lvl > 0:
+		stats["elite_dmg_bonus"] = stats.get("elite_dmg_bonus", 0.0) + float(lvl) * 0.15
+
+	lvl = get_upgrade_level("lucky_drops")
+	if lvl > 0:
+		stats["lucky_drop_chance"] = stats.get("lucky_drop_chance", 0.0) + float(lvl) * 0.08
+
+	if get_upgrade_level("explosive_start") >= 1:
+		stats["chain_explosion"] = maxf(stats.get("chain_explosion", 0.0), 0.25)
+
+	lvl = get_upgrade_level("wave_veteran")
+	if lvl > 0:
+		var bonus_waves := mini(int(best_wave / 5.0), 20)
+		stats["max_health"] += bonus_waves * lvl * 10
+
 	# ── Specials ───────────────────────────────────────────────────────────────
 	if get_upgrade_level("start_dash") >= 1:
 		stats["dash_enabled"] = true
@@ -317,6 +382,15 @@ func apply_to_stats(stats: Dictionary) -> void:
 		stats["melee_level"]   = 1
 
 # ── Achievements ──────────────────────────────────────────────────────────────
+func add_run_history(wave: int, kills: int, time: float, coins: int) -> void:
+	run_history.push_front({"wave": wave, "kills": kills, "time": time, "coins": coins})
+	if run_history.size() > MAX_RUN_HISTORY:
+		run_history.resize(MAX_RUN_HISTORY)
+	_save()
+
+func get_run_history() -> Array:
+	return run_history
+
 func update_best_run(wave: int, kills: int, time: float) -> void:
 	var changed := false
 	if wave > best_wave:
@@ -352,12 +426,14 @@ func _save() -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_var({
-			"coins":        total_coins,
-			"upgrades":     permanent_upgrades,
-			"achievements": achievements,
-			"best_wave":    best_wave,
-			"best_kills":   best_kills,
-			"best_time":    best_time,
+			"coins":         total_coins,
+			"upgrades":      permanent_upgrades,
+			"achievements":  achievements,
+			"best_wave":     best_wave,
+			"best_kills":    best_kills,
+			"best_time":     best_time,
+			"run_history":   run_history,
+			"tutorial_done": tutorial_done,
 		})
 
 func _load() -> void:
@@ -371,6 +447,8 @@ func _load() -> void:
 		total_coins        = data.get("coins",        0)
 		permanent_upgrades = data.get("upgrades",     {})
 		achievements       = data.get("achievements", {})
-		best_wave  = data.get("best_wave",  0)
-		best_kills = data.get("best_kills", 0)
-		best_time  = data.get("best_time",  0.0)
+		best_wave     = data.get("best_wave",     0)
+		best_kills    = data.get("best_kills",    0)
+		best_time     = data.get("best_time",     0.0)
+		run_history   = data.get("run_history",   [])
+		tutorial_done = data.get("tutorial_done", false)

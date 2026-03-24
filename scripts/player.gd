@@ -43,10 +43,16 @@ signal dash_ready(ready: bool)
 const AURA_RADIUS   := 100.0
 const AURA_DMG_MULT := 0.4   # fraction of player damage
 
+# ── Battle Cry ────────────────────────────────────────────────────────────────
+var _battle_cry_timer: float = 0.0
+const BATTLE_CRY_DURATION    := 3.0
+const BATTLE_CRY_SPEED_BONUS := 30.0
+
 # ── Cached stats (updated on stats_changed to avoid per-frame dict lookups) ───
-var _cached_speed:       float = 150.0
-var _cached_regen:       float = 0.0
-var _cached_synergy_aura: bool = false
+var _cached_speed:           float = 150.0
+var _cached_regen:           float = 0.0
+var _cached_synergy_aura:    bool  = false
+var _cached_elite_dmg_bonus: float = 0.0
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -69,6 +75,10 @@ func _physics_process(delta: float) -> void:
 		return
 	var final_dir: Vector2 = move_dir if move_dir.length() > 0.1 else _keyboard_dir()
 
+	# Battle cry timer
+	if _battle_cry_timer > 0.0:
+		_battle_cry_timer -= delta
+
 	# Dash cooldown
 	if _dash_cooldown_remaining > 0.0:
 		_dash_cooldown_remaining -= delta
@@ -82,7 +92,8 @@ func _physics_process(delta: float) -> void:
 		if _dash_elapsed >= DASH_DURATION:
 			_dashing = false
 	else:
-		velocity = final_dir * _cached_speed
+		var cry_bonus := BATTLE_CRY_SPEED_BONUS if _battle_cry_timer > 0.0 else 0.0
+		velocity = final_dir * (_cached_speed + cry_bonus)
 	move_and_slide()
 	if final_dir.length() > 0.1 and not _dashing:
 		sprite.flip_h = final_dir.x < 0.0
@@ -147,8 +158,11 @@ func take_damage(amount: int) -> void:
 		iframes_timer.start(0.4)
 		return
 
-	# Apply flat armor reduction
+	# Apply flat armor reduction, then percentage reduction
 	var reduced := maxi(amount - int(GameManager.stats.get("armor", 0)), 1)
+	var dr: float = GameManager.stats.get("dmg_reduction", 0.0)
+	if dr > 0.0:
+		reduced = maxi(int(float(reduced) * (1.0 - dr)), 1)
 	current_hp = maxi(current_hp - reduced, 0)
 	health_changed.emit(current_hp, GameManager.stats["max_health"])
 	_flash(Color(1.0, 0.2, 0.2))
@@ -169,6 +183,8 @@ func on_kill() -> void:
 	var ls := float(GameManager.stats.get("lifesteal", 0.0))
 	if ls > 0.0:
 		heal(int(ls))
+	if GameManager.stats.get("battle_cry", false):
+		_battle_cry_timer = BATTLE_CRY_DURATION
 
 func _flash(color: Color) -> void:
 	sprite.modulate = color
@@ -233,6 +249,10 @@ func _shoot() -> void:
 		if GameManager.stats.get("berserk_threshold", 0.0) > 0.0:
 			if float(current_hp) / float(GameManager.stats["max_health"]) < GameManager.stats["berserk_threshold"]:
 				dmg = int(float(dmg) * 1.6)
+		if _cached_elite_dmg_bonus > 0.0:
+			var t := target as Enemy
+			if t and t.is_elite:
+				dmg = int(float(dmg) * (1.0 + _cached_elite_dmg_bonus))
 		proj.launch(dir, dmg, GameManager.stats["projectile_speed"])
 
 func _nearest_enemies(count: int) -> Array:
@@ -284,9 +304,10 @@ func _on_i_frames_timer_timeout() -> void:
 	is_invincible = false
 
 func _cache_stats() -> void:
-	_cached_speed        = float(GameManager.stats["speed"])
-	_cached_regen        = float(GameManager.stats.get("regen", 0.0))
-	_cached_synergy_aura = GameManager.stats.get("synergy_aura", false)
+	_cached_speed            = float(GameManager.stats["speed"])
+	_cached_regen            = float(GameManager.stats.get("regen", 0.0))
+	_cached_synergy_aura     = GameManager.stats.get("synergy_aura", false)
+	_cached_elite_dmg_bonus  = float(GameManager.stats.get("elite_dmg_bonus", 0.0))
 
 func _on_stats_changed() -> void:
 	current_hp = mini(current_hp, GameManager.stats["max_health"])

@@ -10,7 +10,7 @@ signal hit_taken(world_position: Vector2, amount: float)
 signal split_requested(world_position: Vector2)   # emitted by SPLITTER on death
 
 # ── Types ─────────────────────────────────────────────────────────────────────
-enum Type { BASIC, FAST, TANK, BOSS, SPLITTER, EXPLODER, SHIELDER, HEALER, SWARM }
+enum Type { BASIC, FAST, TANK, BOSS, SPLITTER, EXPLODER, SHIELDER, HEALER, SWARM, TELEPORTER, CHARGER }
 @export var enemy_type: Type = Type.BASIC
 
 # ── Per-type base config ──────────────────────────────────────────────────────
@@ -23,7 +23,9 @@ const CONFIGS: Dictionary = {
 	Type.EXPLODER: { "hp": 25,  "spd": 120,  "dmg": 35, "xp": 25,  "col": Color(1.00, 0.45, 0.05) },
 	Type.SHIELDER: { "hp": 60,  "spd": 65,   "dmg": 12, "xp": 35,  "col": Color(0.40, 0.60, 1.00) },
 	Type.HEALER:   { "hp": 40,  "spd": 50,   "dmg": 8,  "xp": 40,  "col": Color(0.20, 0.90, 0.80) },
-	Type.SWARM:    { "hp": 8,   "spd": 175,  "dmg": 5,  "xp": 6,   "col": Color(1.00, 0.60, 0.80) },
+	Type.SWARM:       { "hp": 8,   "spd": 175,  "dmg": 5,  "xp": 6,   "col": Color(1.00, 0.60, 0.80) },
+	Type.TELEPORTER:  { "hp": 40,  "spd": 55,   "dmg": 14, "xp": 35,  "col": Color(0.10, 0.90, 1.00) },
+	Type.CHARGER:     { "hp": 65,  "spd": 60,   "dmg": 22, "xp": 30,  "col": Color(0.80, 0.12, 0.25) },
 }
 
 # ── Node References ───────────────────────────────────────────────────────────
@@ -58,6 +60,23 @@ var _heal_timer:       float = 0.0
 const HEALER_PULSE_INTERVAL := 1.5
 const HEALER_PULSE_RADIUS   := 120.0
 const HEALER_PULSE_AMOUNT   := 5.0
+
+# ── Teleporter-specific state ─────────────────────────────────────────────────
+var _tele_timer:       float = 0.0
+var _tele_flashing:    bool  = false
+var _tele_flash_timer: float = 0.0
+const TELEPORTER_INTERVAL       := 3.5
+const TELEPORTER_FLASH_DURATION := 0.28
+
+# ── Charger-specific state ────────────────────────────────────────────────────
+var _charger_state: int     = 0   # 0=tracking, 1=warning, 2=charging, 3=cooldown
+var _charger_timer: float   = 0.0
+var _charger_dir:   Vector2 = Vector2.ZERO
+const CHARGER_TRACK_DURATION  := 2.2
+const CHARGER_WARN_DURATION   := 0.35
+const CHARGER_CHARGE_DURATION := 0.55
+const CHARGER_COOLDOWN        := 1.0
+const CHARGER_CHARGE_SPEED    := 360.0
 
 # ── Boss-specific state ───────────────────────────────────────────────────────
 var _charge_timer:   float = 0.0
@@ -115,10 +134,8 @@ func activate(player: Node2D, wave_multiplier: float) -> void:
 		current_hp    = max_hp
 		xp_value     *= 5
 		dmg           = int(dmg * 1.5)
-		sprite.modulate = _base_color.lightened(0.5)
 		sprite.scale   *= 1.25
-	else:
-		sprite.modulate = _base_color
+	sprite.modulate = _normal_modulate()
 
 	# Per-type setup
 	if enemy_type == Type.SHIELDER:
@@ -130,6 +147,12 @@ func activate(player: Node2D, wave_multiplier: float) -> void:
 	_burn_dmg_per_sec = 0.0
 	_knockback_vel    = Vector2.ZERO
 	_heal_timer       = 0.0
+	_tele_timer       = 0.0
+	_tele_flashing    = false
+	_tele_flash_timer = 0.0
+	_charger_state    = 0
+	_charger_timer    = 0.0
+	_charger_dir      = Vector2.ZERO
 
 	_update_hp_bar()
 
@@ -167,6 +190,10 @@ func _physics_process(delta: float) -> void:
 			_exploder_ai(delta)
 		Type.HEALER:
 			_healer_ai(delta)
+		Type.TELEPORTER:
+			_teleporter_ai(delta)
+		Type.CHARGER:
+			_charger_ai(delta)
 		_:
 			velocity = (_player.global_position - global_position).normalized() * spd * _slow_factor + _knockback_vel
 			move_and_slide()
@@ -178,7 +205,7 @@ func _boss_ai(delta: float) -> void:
 		velocity = dir * spd * BOSS_CHARGE_SPEED_MULT
 		if _charge_elapsed >= BOSS_CHARGE_DURATION:
 			_charging = false
-			sprite.modulate = _base_color.lightened(0.5) if is_elite else _base_color
+			sprite.modulate = _normal_modulate()
 	else:
 		_charge_timer += delta
 		velocity = dir * spd
@@ -223,12 +250,61 @@ func _healer_ai(delta: float) -> void:
 		_heal_timer = 0.0
 		_pulse_heal()
 
+func _teleporter_ai(delta: float) -> void:
+	if _tele_flashing:
+		_tele_flash_timer += delta
+		sprite.modulate.a = 0.25 + absf(sin(_tele_flash_timer * 22.0)) * 0.55
+		if _tele_flash_timer >= TELEPORTER_FLASH_DURATION:
+			var angle := randf() * TAU
+			var dist  := randf_range(65.0, 105.0)
+			global_position  = _player.global_position + Vector2(cos(angle), sin(angle)) * dist
+			sprite.modulate  = _normal_modulate()
+			_tele_flashing   = false
+			_tele_timer      = 0.0
+		return
+	velocity = (_player.global_position - global_position).normalized() * spd * _slow_factor + _knockback_vel
+	move_and_slide()
+	_tele_timer += delta
+	if _tele_timer >= TELEPORTER_INTERVAL:
+		_tele_flashing    = true
+		_tele_flash_timer = 0.0
+
+func _charger_ai(delta: float) -> void:
+	_charger_timer += delta
+	match _charger_state:
+		0:  # Tracking player
+			velocity = (_player.global_position - global_position).normalized() * spd * _slow_factor + _knockback_vel
+			move_and_slide()
+			if _charger_timer >= CHARGER_TRACK_DURATION:
+				_charger_state = 1
+				_charger_timer = 0.0
+				_charger_dir   = (_player.global_position - global_position).normalized()
+				sprite.modulate = Color(1.0, 0.9, 0.1)  # Yellow warning
+		1:  # Pre-charge warning pause
+			velocity = Vector2.ZERO
+			if _charger_timer >= CHARGER_WARN_DURATION:
+				_charger_state  = 2
+				_charger_timer  = 0.0
+				sprite.modulate = _normal_modulate()
+		2:  # Charging
+			velocity = _charger_dir * CHARGER_CHARGE_SPEED
+			move_and_slide()
+			if _charger_timer >= CHARGER_CHARGE_DURATION:
+				_charger_state = 3
+				_charger_timer = 0.0
+		3:  # Cooldown
+			velocity = velocity.move_toward(Vector2.ZERO, 600.0 * delta)
+			move_and_slide()
+			if _charger_timer >= CHARGER_COOLDOWN:
+				_charger_state = 0
+				_charger_timer = 0.0
+
 func _pulse_heal() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy) or enemy == self:
 			continue
 		var e := enemy as Enemy
-		if e and global_position.distance_to(e.global_position) <= HEALER_PULSE_RADIUS:
+		if e and global_position.distance_squared_to(e.global_position) <= HEALER_PULSE_RADIUS * HEALER_PULSE_RADIUS:
 			if e.current_hp < e.max_hp:
 				e.current_hp = minf(e.current_hp + HEALER_PULSE_AMOUNT, e.max_hp)
 				e._update_hp_bar()
@@ -250,7 +326,7 @@ func take_damage(amount: float) -> void:
 		sprite.modulate = Color(0.5, 0.8, 1.0)
 		await get_tree().create_timer(0.12).timeout
 		if is_instance_valid(self) and not _dead:
-			sprite.modulate = _base_color.lightened(0.5) if is_elite else _base_color
+			sprite.modulate = _normal_modulate()
 		return
 	current_hp -= amount
 	_update_hp_bar()
@@ -258,6 +334,9 @@ func take_damage(amount: float) -> void:
 	hit_taken.emit(global_position, amount)
 	if current_hp <= 0.0:
 		_die()
+
+func _normal_modulate() -> Color:
+	return _base_color.lightened(0.5) if is_elite else _base_color
 
 func _update_hp_bar() -> void:
 	if hp_bar:
@@ -271,7 +350,7 @@ func _flash_hit() -> void:
 	sprite.modulate = Color.WHITE
 	await get_tree().create_timer(0.06).timeout
 	if is_instance_valid(self) and not _dead:
-		sprite.modulate = _base_color.lightened(0.5) if is_elite else _base_color
+		sprite.modulate = _normal_modulate()
 
 func _die() -> void:
 	if _dead:
@@ -310,9 +389,27 @@ static func _shape_tex(type: int) -> ImageTexture:
 		Type.SPLITTER: return _triangle_tex(26)
 		Type.EXPLODER: return _cross_tex(22)
 		Type.SHIELDER: return _hexagon_tex(28)
-		Type.HEALER:   return _star_tex(28)
-		Type.SWARM:    return _circle_tex(12)
-		_:             return _circle_tex(26)
+		Type.HEALER:      return _star_tex(28)
+		Type.SWARM:       return _circle_tex(12)
+		Type.TELEPORTER:  return _ring_tex(24, 5)
+		Type.CHARGER:     return _diamond_tex(12, 26)
+		_:                return _circle_tex(26)
+
+static func _ring_tex(size: int, thickness: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx      := (size - 1) * 0.5
+	var cy      := (size - 1) * 0.5
+	var r_outer := size * 0.5 - 0.5
+	var r_inner := r_outer - float(thickness)
+	for y in size:
+		for x in size:
+			var dx := x - cx
+			var dy := y - cy
+			var d2 := dx * dx + dy * dy
+			if d2 <= r_outer * r_outer and d2 >= r_inner * r_inner:
+				img.set_pixel(x, y, Color.WHITE)
+	return ImageTexture.create_from_image(img)
 
 static func _circle_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)

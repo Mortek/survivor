@@ -20,8 +20,10 @@ var ENEMY_TYPE_BOSS     := Enemy.Type.BOSS
 var ENEMY_TYPE_SPLITTER := Enemy.Type.SPLITTER
 var ENEMY_TYPE_EXPLODER := Enemy.Type.EXPLODER
 var ENEMY_TYPE_SHIELDER := Enemy.Type.SHIELDER
-var ENEMY_TYPE_HEALER   := Enemy.Type.HEALER
-var ENEMY_TYPE_SWARM    := Enemy.Type.SWARM
+var ENEMY_TYPE_HEALER      := Enemy.Type.HEALER
+var ENEMY_TYPE_SWARM       := Enemy.Type.SWARM
+var ENEMY_TYPE_TELEPORTER  := Enemy.Type.TELEPORTER
+var ENEMY_TYPE_CHARGER     := Enemy.Type.CHARGER
 
 const ELITE_CHANCE := 0.08
 
@@ -69,6 +71,10 @@ func _next_wave() -> void:
 	# Offer a curse right after boss waves (wave 6, 11, 16...)
 	if GameManager.wave >= 6 and (GameManager.wave - 1) % 5 == 0:
 		GameManager.try_offer_curse()
+
+	# Milestone reward every 10 waves (wave 10, 20, 30...)
+	if GameManager.wave % 10 == 0:
+		_schedule_milestone_reward()
 
 # ── Spawning ──────────────────────────────────────────────────────────────────
 func _try_spawn() -> void:
@@ -121,21 +127,30 @@ func _pick_type() -> int:
 		elif r < 0.88: return ENEMY_TYPE_TANK
 		else:          return ENEMY_TYPE_SPLITTER
 	elif w <= 11:
-		if   r < 0.35: return ENEMY_TYPE_BASIC
-		elif r < 0.58: return ENEMY_TYPE_FAST
-		elif r < 0.73: return ENEMY_TYPE_TANK
-		elif r < 0.84: return ENEMY_TYPE_SPLITTER
-		elif r < 0.92: return ENEMY_TYPE_EXPLODER
-		else:          return ENEMY_TYPE_SHIELDER
+		if   r < 0.32: return ENEMY_TYPE_BASIC
+		elif r < 0.54: return ENEMY_TYPE_FAST
+		elif r < 0.68: return ENEMY_TYPE_TANK
+		elif r < 0.78: return ENEMY_TYPE_SPLITTER
+		elif r < 0.85: return ENEMY_TYPE_EXPLODER
+		elif r < 0.91: return ENEMY_TYPE_SHIELDER
+		elif r < 0.96: return ENEMY_TYPE_CHARGER
+		else:          return ENEMY_TYPE_TELEPORTER
 	else:
-		if   r < 0.25: return ENEMY_TYPE_BASIC
-		elif r < 0.42: return ENEMY_TYPE_FAST
-		elif r < 0.55: return ENEMY_TYPE_TANK
-		elif r < 0.65: return ENEMY_TYPE_SPLITTER
-		elif r < 0.74: return ENEMY_TYPE_EXPLODER
-		elif r < 0.82: return ENEMY_TYPE_SHIELDER
-		elif r < 0.91: return ENEMY_TYPE_SWARM
-		else:          return ENEMY_TYPE_HEALER
+		if   r < 0.20: return ENEMY_TYPE_BASIC
+		elif r < 0.35: return ENEMY_TYPE_FAST
+		elif r < 0.48: return ENEMY_TYPE_TANK
+		elif r < 0.57: return ENEMY_TYPE_SPLITTER
+		elif r < 0.65: return ENEMY_TYPE_EXPLODER
+		elif r < 0.72: return ENEMY_TYPE_SHIELDER
+		elif r < 0.79: return ENEMY_TYPE_SWARM
+		elif r < 0.85: return ENEMY_TYPE_HEALER
+		elif r < 0.92: return ENEMY_TYPE_CHARGER
+		else:          return ENEMY_TYPE_TELEPORTER
+
+func _schedule_milestone_reward() -> void:
+	await get_tree().create_timer(2.2).timeout
+	if is_instance_valid(self) and GameManager.state == GameManager.State.PLAYING:
+		GameManager.offer_milestone_upgrade()
 
 func _edge_position() -> Vector2:
 	var cam     := get_viewport().get_camera_2d()

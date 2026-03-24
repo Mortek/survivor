@@ -8,6 +8,8 @@ var _players: Dictionary = {}
 
 func _ready() -> void:
 	_add("hit",           _sine(480.0,  0.07, 0.25, 6.0))
+	_add("hit2",          _sine(360.0,  0.07, 0.22, 7.0))
+	_add("hit3",          _sine(580.0,  0.06, 0.20, 8.0))
 	_add("shoot",         _sine(900.0,  0.05, 0.18, 8.0))
 	_add("melee",         _sine(220.0,  0.10, 0.30, 5.0))
 	_add("coin",          _sine(1320.0, 0.06, 0.14, 5.0))

@@ -61,6 +61,14 @@ var _achievement_showing: bool = false
 # ── Shield indicator ──────────────────────────────────────────────────────────
 var _shield_bar: HBoxContainer = null
 
+# ── Off-screen enemy indicators ───────────────────────────────────────────────
+var _indicator_layer:  Control = null
+var _indicator_labels: Array   = []   # pre-allocated pool, reused each update
+var _indicator_timer:  float   = 0.0
+const INDICATOR_UPDATE_INTERVAL := 0.20
+const INDICATOR_POOL_SIZE       := 8
+const CHAIN_EXPLODE_RADIUS      := 80.0
+
 # ── Pause overlay ─────────────────────────────────────────────────────────────
 var _pause_overlay: Control = null
 
@@ -83,8 +91,10 @@ func _ready() -> void:
 		Enemy.Type.SPLITTER: ["☠ Splitter",  Color(0.30, 1.00, 0.60)],
 		Enemy.Type.EXPLODER: ["💥 Exploder", Color(1.00, 0.55, 0.10)],
 		Enemy.Type.SHIELDER: ["🛡 Shielder",  Color(0.40, 0.70, 1.00)],
-		Enemy.Type.HEALER:   ["💚 Healer",    Color(0.20, 0.90, 0.80)],
-		Enemy.Type.SWARM:    ["☠ Swarm",      Color(1.00, 0.60, 0.80)],
+		Enemy.Type.HEALER:      ["💚 Healer",     Color(0.20, 0.90, 0.80)],
+		Enemy.Type.SWARM:       ["☠ Swarm",       Color(1.00, 0.60, 0.80)],
+		Enemy.Type.TELEPORTER:  ["⟨⟩ Teleporter", Color(0.20, 0.92, 1.00)],
+		Enemy.Type.CHARGER:     ["↯ Charger",      Color(0.90, 0.20, 0.30)],
 	}
 	GameManager.reset()
 
@@ -178,6 +188,16 @@ func _ready() -> void:
 
 	# ── Stats button ──
 	_build_stats_button()
+
+	# ── Off-screen indicators ──
+	_build_indicator_layer()
+
+	# ── Tutorial hints (first run only) ──
+	var _meta := get_node_or_null("/root/MetaManager")
+	if _meta and not _meta.tutorial_done:
+		_meta.tutorial_done = true
+		_meta._save()
+		_show_tutorial_hints()
 
 	# ── Red flash on player hit ──
 	player.health_changed.connect(_on_player_health_changed)
@@ -435,10 +455,17 @@ func _on_enemy_spawned(enemy: Node) -> void:
 func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int) -> void:
 	call_deferred("_spawn_coin", world_pos, xp)
 	call_deferred("_spawn_death_particles", world_pos, color)
-	if randf() < 0.04:   # 4% chance
+	# Bonus coin drop chance (Lucky Breaks meta upgrade)
+	var extra_drop: float = GameManager.stats.get("lucky_drop_chance", 0.0)
+	if randf() < 0.04 + extra_drop:
 		call_deferred("_spawn_magnet_orb", world_pos)
 	GameManager.add_kill()
 	player.on_kill()
+	# Chain Reaction: explode nearby enemies on kill
+	var chain_chance: float = GameManager.stats.get("chain_explosion", 0.0)
+	if chain_chance > 0.0 and randf() < chain_chance:
+		var explosion_dmg := float(GameManager.stats.get("damage", 10)) * 0.5
+		call_deferred("_chain_explode", world_pos, explosion_dmg)
 
 	if type == Enemy.Type.BOSS:
 		_boss_death_hitpause()
@@ -457,7 +484,8 @@ func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int) -> voi
 func _on_enemy_hit_taken(world_pos: Vector2, amount: float) -> void:
 	call_deferred("_spawn_damage_number", world_pos, amount)
 	if _audio:
-		_audio.play("hit")
+		var hit_pick: String = (["hit", "hit2", "hit3"] as Array[String])[randi() % 3]
+		_audio.play(hit_pick)
 
 func _on_split_requested(world_pos: Vector2) -> void:
 	# Spawn 2 small BASIC enemies at the split position
@@ -636,6 +664,15 @@ func _do_flash(color: Color, duration: float) -> void:
 	_flash_tween.tween_property(_level_flash, "color:a", 0.0, duration)
 
 # ── FX Spawning ───────────────────────────────────────────────────────────────
+func _chain_explode(pos: Vector2, dmg: float) -> void:
+	var r2 := CHAIN_EXPLODE_RADIUS * CHAIN_EXPLODE_RADIUS
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		if (enemy as Node2D).global_position.distance_squared_to(pos) <= r2:
+			enemy.take_damage(dmg)
+	_do_flash(Color(1.0, 0.65, 0.1, 0.20), 0.15)
+
 func _spawn_coin(world_pos: Vector2, xp: int) -> void:
 	var coin: Node = COIN_SCENE.instantiate()
 	coins_node.add_child(coin)
@@ -757,6 +794,9 @@ func _open_stats_popup() -> void:
 	if _stats_popup:
 		_stats_popup.queue_free()
 		_stats_popup = null
+		if GameManager.state == GameManager.State.PAUSED:
+			GameManager.state = GameManager.State.PLAYING
+			get_tree().paused = false
 		return
 	if GameManager.state == GameManager.State.PLAYING:
 		GameManager.state = GameManager.State.PAUSED
@@ -820,11 +860,12 @@ func _build_stats_popup() -> Control:
 			["Knockback",   "%.0f" % s.get("knockback", 0.0)],
 		]],
 		["🛡  DEFENSE", [
-			["Max HP",      "%d" % s.get("max_health", 100)],
-			["Armor",       "%d" % s.get("armor", 0)],
-			["Lifesteal",   "%d%%" % int(s.get("lifesteal", 0.0) * 100.0)],
-			["Regen",       "%.1f/s" % s.get("regen", 0.0)],
-			["Shield",      "%d charges" % s.get("shield_charges", 0)],
+			["Max HP",       "%d" % s.get("max_health", 100)],
+			["Armor",        "%d" % s.get("armor", 0)],
+			["Dmg Reduction","%d%%" % int(s.get("dmg_reduction", 0.0) * 100.0)],
+			["Lifesteal",    "%d HP/kill" % int(s.get("lifesteal", 0.0))],
+			["Regen",        "%.1f/s" % s.get("regen", 0.0)],
+			["Shield",       "%d charges" % s.get("shield_charges", 0)],
 		]],
 		["✦  UTILITY", [
 			["Speed",         "%.0f" % s.get("speed", 150.0)],
@@ -978,7 +1019,7 @@ func _build_settings_overlay() -> Control:
 	menu_btn.text = "⬅  MAIN MENU"
 	menu_btn.add_theme_font_size_override("font_size", 16)
 	menu_btn.pressed.connect(func() -> void:
-		_show_quit_confirm(root)
+		_show_quit_confirm(ui)
 	)
 	vbox.add_child(menu_btn)
 
@@ -997,7 +1038,7 @@ func _build_settings_overlay() -> Control:
 
 	return root
 
-func _show_quit_confirm(settings_root: Control) -> void:
+func _show_quit_confirm(settings_root: Node) -> void:
 	var vp    := get_viewport_rect().size
 	var cw    := minf(vp.x - 40.0, 300.0)
 	var confirm := PanelContainer.new()
@@ -1081,6 +1122,101 @@ func _load_setting(key: String, default_val: float) -> float:
 		return default_val
 	return float(cfg.get_value("settings", key, default_val))
 
+# ── Per-Frame Updates ─────────────────────────────────────────────────────────
+func _process(delta: float) -> void:
+	if GameManager.state != GameManager.State.PLAYING:
+		return
+	_indicator_timer += delta
+	if _indicator_timer >= INDICATOR_UPDATE_INTERVAL:
+		_indicator_timer = 0.0
+		_update_edge_indicators()
+
+# ── Off-Screen Enemy Indicators ───────────────────────────────────────────────
+func _build_indicator_layer() -> void:
+	_indicator_layer = Control.new()
+	_indicator_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_indicator_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_indicator_layer.z_index      = 12
+	ui.add_child(_indicator_layer)
+	for _i in INDICATOR_POOL_SIZE:
+		var lbl := Label.new()
+		lbl.add_theme_font_size_override("font_size", 22)
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lbl.visible      = false
+		_indicator_layer.add_child(lbl)
+		_indicator_labels.append(lbl)
+
+func _update_edge_indicators() -> void:
+	if not _indicator_layer:
+		return
+	for lbl in _indicator_labels:
+		lbl.visible = false
+	var canvas_xform := get_viewport().get_canvas_transform()
+	var vp           := get_viewport_rect().size
+	const MARGIN     := 22.0
+	var slot := 0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if slot >= _indicator_labels.size():
+			break
+		if not is_instance_valid(enemy):
+			continue
+		var e := enemy as Enemy
+		if not e:
+			continue
+		var screen_pos := canvas_xform * e.global_position
+		if Rect2(Vector2.ZERO, vp).grow(-MARGIN * 2.0).has_point(screen_pos):
+			continue
+		var center := vp * 0.5
+		var dir    := screen_pos - center
+		if dir.length() < 0.01:
+			continue
+		var sx       := (vp.x * 0.5 - MARGIN) / maxf(absf(dir.x), 0.01)
+		var sy       := (vp.y * 0.5 - MARGIN) / maxf(absf(dir.y), 0.01)
+		var edge_pos := center + dir * minf(sx, sy)
+		var col: Color
+		if e.enemy_type == Enemy.Type.BOSS:
+			col = Color(1.0, 0.2, 1.0)
+		elif e.is_elite:
+			col = Color(1.0, 0.75, 0.2)
+		else:
+			col = Color(1.0, 0.4, 0.4)
+		var lbl      := _indicator_labels[slot] as Label
+		lbl.text     = _angle_to_arrow(dir.angle())
+		lbl.modulate = col
+		lbl.position = edge_pos - Vector2(11.0, 11.0)
+		lbl.visible  = true
+		slot        += 1
+
+func _angle_to_arrow(angle: float) -> String:
+	var a   := fmod(angle + TAU, TAU)
+	var idx := int(round(a / TAU * 8.0)) % 8
+	return ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"][idx]
+
+# ── Tutorial Hints ────────────────────────────────────────────────────────────
+func _show_tutorial_hints() -> void:
+	var vp   := get_viewport_rect().size
+	var tips := [
+		"Use the joystick (left half) to move",
+		"Your weapon fires automatically",
+		"Collect gems to gain XP and level up",
+		"Choose upgrades each level to get stronger!",
+	]
+	for i in tips.size():
+		var lbl := Label.new()
+		lbl.text                 = tips[i]
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 15)
+		lbl.modulate             = Color(1.0, 1.0, 0.85, 0.0)
+		lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
+		lbl.size                 = Vector2(vp.x - 40.0, 24.0)
+		lbl.position             = Vector2(20.0, vp.y * 0.52 + float(i) * 30.0)
+		ui.add_child(lbl)
+		var tw := lbl.create_tween()
+		tw.tween_property(lbl, "modulate:a", 0.9, 0.4).set_delay(float(i) * 0.5)
+		tw.tween_interval(3.5)
+		tw.tween_property(lbl, "modulate:a", 0.0, 0.8)
+		tw.tween_callback(lbl.queue_free)
+
 # ── Focus Lost Auto-Pause ─────────────────────────────────────────────────────
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
@@ -1135,6 +1271,7 @@ func _on_game_over() -> void:
 	var meta := get_node_or_null("/root/MetaManager")
 	if meta:
 		meta.update_best_run(GameManager.wave, GameManager.kills, GameManager.survival_time)
+		meta.add_run_history(GameManager.wave, GameManager.kills, GameManager.survival_time, GameManager.coins_this_run)
 	if _go_best_label:
 		var meta2 := get_node_or_null("/root/MetaManager")
 		_go_best_label.text = meta2.get_best_run_string() if meta2 else ""
