@@ -5,6 +5,7 @@ extends Control
 @onready var title_label: Label = $Panel/VBox/TitleLabel
 
 var _card_vbox: VBoxContainer = null   # built fresh each show
+var _auto_pick_all: bool = false       # debug: auto-pick every upgrade
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -12,6 +13,10 @@ func _ready() -> void:
 	GameManager.upgrade_available.connect(_show_upgrades)
 
 func _show_upgrades(choices: Array) -> void:
+	# Debug auto-pick: skip UI entirely when enabled
+	if _auto_pick_all and OS.is_debug_build():
+		GameManager.apply_upgrade(choices[randi() % choices.size()])
+		return
 	# Fill the CanvasLayer so the backdrop covers everything
 	var vp := get_viewport_rect().size
 	position = Vector2.ZERO
@@ -39,10 +44,9 @@ func _show_upgrades(choices: Array) -> void:
 
 	# ── Centered panel ────────────────────────────────────────────────────────
 	var pw := minf(vp.x - 16.0, 460.0)
-	# Size to content with max = base height + 25%, then scroll
+	# Panel is 25% taller than content; scroll if it still overflows viewport
 	var content_h := float(choices.size()) * 96.0 + 100.0
-	var max_h := minf(content_h * 1.25, vp.y - 40.0)
-	var ph := minf(content_h, max_h)
+	var ph := minf(content_h * 1.25, vp.y - 40.0)
 
 	var panel := PanelContainer.new()
 	panel.name     = "DynamicPanel"
@@ -79,6 +83,8 @@ func _show_upgrades(choices: Array) -> void:
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode   = ScrollContainer.SCROLL_MODE_AUTO
+	# Invisible scrollbar — keeps touch/wheel scrolling but hides the bar
+	scroll.get_v_scroll_bar().modulate = Color(1, 1, 1, 0)
 	outer.add_child(scroll)
 
 	_card_vbox = VBoxContainer.new()
@@ -89,16 +95,30 @@ func _show_upgrades(choices: Array) -> void:
 	for upgrade in choices:
 		_card_vbox.add_child(_build_card(upgrade))
 
-	# Debug auto-pick button (only in debug builds)
+	# Debug auto-pick buttons (only in debug builds)
 	if OS.is_debug_build():
+		var dbg_row := HBoxContainer.new()
+		dbg_row.add_theme_constant_override("separation", 6)
 		var auto_btn := Button.new()
-		auto_btn.text = "⚡ AUTO PICK (debug)"
+		auto_btn.text = "⚡ AUTO PICK"
 		auto_btn.add_theme_font_size_override("font_size", 12)
 		auto_btn.modulate = Color(1.0, 1.0, 0.5, 0.7)
+		auto_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		auto_btn.pressed.connect(func() -> void:
 			_on_select(choices[randi() % choices.size()])
 		)
-		outer.add_child(auto_btn)
+		dbg_row.add_child(auto_btn)
+		var auto_all_btn := Button.new()
+		auto_all_btn.text = "⚡ AUTO ALL"
+		auto_all_btn.add_theme_font_size_override("font_size", 12)
+		auto_all_btn.modulate = Color(0.5, 1.0, 1.0, 0.7)
+		auto_all_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		auto_all_btn.pressed.connect(func() -> void:
+			_auto_pick_all = true
+			_on_select(choices[randi() % choices.size()])
+		)
+		dbg_row.add_child(auto_all_btn)
+		outer.add_child(dbg_row)
 
 	show()
 

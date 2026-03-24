@@ -221,11 +221,22 @@ func _build_settings_overlay() -> Control:
 	vbox.add_theme_constant_override("separation", 14)
 	panel.add_child(vbox)
 
+	# Title row with close X in the top-right
+	var title_row := HBoxContainer.new()
+	vbox.add_child(title_row)
 	var title := Label.new()
 	title.text                 = "SETTINGS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 22)
-	vbox.add_child(title)
+	title_row.add_child(title)
+
+	var close_x := Button.new()
+	close_x.text = "✕"
+	close_x.add_theme_font_size_override("font_size", 16)
+	close_x.custom_minimum_size = Vector2(30, 28)
+	close_x.pressed.connect(root.queue_free)
+	title_row.add_child(close_x)
 
 	# Volume row
 	var vol_row := HBoxContainer.new()
@@ -261,14 +272,6 @@ func _build_settings_overlay() -> Control:
 	)
 	vib_row.add_child(vib_check)
 	vbox.add_child(vib_row)
-
-	vbox.add_child(HSeparator.new())
-
-	var close_btn := Button.new()
-	close_btn.text = "CLOSE"
-	close_btn.add_theme_font_size_override("font_size", 16)
-	close_btn.pressed.connect(root.queue_free)
-	vbox.add_child(close_btn)
 
 	# Apply saved volume
 	AudioServer.set_bus_volume_db(0, linear_to_db(_load_setting("volume", 0.8)))

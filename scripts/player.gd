@@ -188,7 +188,7 @@ func on_kill() -> void:
 	if GameManager.stats.get("battle_cry", false):
 		_battle_cry_timer = BATTLE_CRY_DURATION
 
-const _BASE_COLOR := Color(0.35, 0.6, 1.0)
+const _BASE_COLOR := Color(0.4, 0.8, 1.0)
 
 func _flash(color: Color) -> void:
 	sprite.modulate = color
@@ -323,15 +323,34 @@ func _start_energy_aura() -> void:
 	_aura_ring.set_meta("phase", 0.0)
 	_aura_ring.connect("draw", func() -> void:
 		var p: float = _aura_ring.get_meta("phase", 0.0)
-		# Outer pulsing halo
-		var r1 := 16.0 + sin(p * 3.0) * 3.0
-		var a1 := 0.15 + sin(p * 2.0) * 0.05
-		_aura_ring.draw_arc(Vector2.ZERO, r1, 0.0, TAU, 24,
-			Color(0.4, 0.7, 1.0, a1), 2.0)
-		# Inner bright ring
-		var r2 := 11.0 + sin(p * 4.5 + 1.0) * 2.0
-		_aura_ring.draw_arc(Vector2.ZERO, r2, 0.0, TAU, 20,
-			Color(0.6, 0.85, 1.0, a1 + 0.05), 1.5)
+		# Shield ring 1 — oval energy shield rotating around ship
+		var r1 := 18.0 + sin(p * 2.5) * 2.0
+		var a1 := 0.12 + sin(p * 2.0) * 0.04
+		_aura_ring.draw_arc(Vector2.ZERO, r1, p * 0.5, p * 0.5 + PI * 1.4, 20,
+			Color(0.5, 0.85, 1.0, a1), 1.5)
+		# Shield ring 2 — counter-rotating
+		var r2 := 15.0 + sin(p * 3.5 + 1.5) * 2.0
+		_aura_ring.draw_arc(Vector2.ZERO, r2, -p * 0.7, -p * 0.7 + PI * 1.2, 18,
+			Color(0.6, 0.9, 1.0, a1 + 0.03), 1.0)
+		# Engine trail — two lines extending behind ship (downward)
+		for side: float in [-4.0, 4.0]:
+			var trail_a := 0.18 + sin(p * 5.0 + side) * 0.06
+			var trail_len := 12.0 + sin(p * 4.0) * 3.0
+			_aura_ring.draw_line(
+				Vector2(side, 8.0),
+				Vector2(side * 0.6, 8.0 + trail_len),
+				Color(0.5, 0.9, 1.0, trail_a), 2.0)
+			# Outer glow of trail
+			_aura_ring.draw_line(
+				Vector2(side, 9.0),
+				Vector2(side * 0.5, 9.0 + trail_len * 0.7),
+				Color(0.4, 0.8, 1.0, trail_a * 0.4), 3.5)
+		# Center engine flare
+		var flare_a := 0.15 + sin(p * 6.0) * 0.07
+		var flare_len := 8.0 + sin(p * 3.0 + 0.5) * 2.0
+		_aura_ring.draw_line(Vector2.ZERO + Vector2(0, 10),
+			Vector2(0, 10 + flare_len),
+			Color(0.7, 0.95, 1.0, flare_a), 1.5)
 	)
 	# Animate phase continuously
 	var tw := _aura_ring.create_tween()
@@ -345,168 +364,292 @@ func _start_energy_aura() -> void:
 static func _warrior_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
+	var s := float(size)
 	var cx := (size - 1) * 0.5
-	var cy := (size - 1) * 0.5
-	var r_body := size * 0.38
-	# Pass 0: wide outer energy aura glow
+
+	# --- Helper: hull half-width at normalized y (0=top, 1=bottom) ---
+	# Returns half-width in pixels for the ship silhouette
+	var _hw := func(t: float) -> float:
+		if t < 0.05:       # nose point
+			return lerpf(0.0, 2.0, t / 0.05)
+		elif t < 0.30:     # nose to cockpit
+			return lerpf(2.0, 5.0, (t - 0.05) / 0.25)
+		elif t < 0.55:     # body section
+			return lerpf(5.0, 8.0, (t - 0.30) / 0.25)
+		elif t < 0.78:     # wing expansion
+			return lerpf(8.0, 20.0, (t - 0.55) / 0.23)
+		elif t < 0.88:     # wing to engine contraction
+			return lerpf(20.0, 6.0, (t - 0.78) / 0.10)
+		else:              # engine taper
+			return lerpf(6.0, 3.0, (t - 0.88) / 0.12)
+
+	# --- Pass 0: Outer energy glow halo (faint silhouette glow) ---
 	for y in size:
+		var t := float(y) / s
+		if t < 0.0 or t > 1.0:
+			continue
+		var hw: float = _hw.call(t)
 		for x in size:
-			var dx := float(x) - cx
-			var dy := float(y) - cy
-			var d := sqrt(dx * dx + dy * dy)
-			if d > r_body * 1.05 and d <= r_body * 1.35:
-				var glow := 1.0 - (d - r_body * 1.05) / (r_body * 0.30)
-				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, glow * 0.2))
-	# Pass 1: armored octagonal torso with layered energy
-	for y in size:
-		for x in size:
-			var dx := float(x) - cx
-			var dy := float(y) - cy
-			var angle := atan2(dy, dx)
-			var sector := fmod(absf(angle) + PI / 8.0, PI / 4.0) - PI / 8.0
-			var oct_r  := r_body / cos(sector) * cos(PI / 8.0)
-			var d := sqrt(dx * dx + dy * dy)
-			if d <= oct_r * 0.90:
-				var norm_d := d / oct_r
-				var intensity := 1.0 - norm_d * 0.4
-				# Radial energy streaks
-				var streak := absf(sin(angle * 4.0)) * 0.12 * (1.0 - norm_d)
-				# Concentric energy rings
-				var ring := absf(sin(norm_d * PI * 3.5)) * 0.06
-				intensity += streak + ring
-				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
-			elif d <= oct_r:
-				# Bright armor rim with bevel
-				var rim_t := (d - oct_r * 0.90) / (oct_r * 0.10)
-				var i := 0.85 + rim_t * 0.15
-				img.set_pixel(x, y, Color(i, i, i, 1.0))
-			elif d <= oct_r * 1.05:
-				var glow := 1.0 - (d - oct_r) / (oct_r * 0.05)
-				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, glow * 0.45))
-	# Helmet: larger with crest and visor
-	var head_r := size * 0.20
-	var head_cy := cy - size * 0.30
-	for y in size:
-		for x in size:
-			var dx := float(x) - cx
-			var dy := float(y) - head_cy
-			var d := sqrt(dx * dx + dy * dy)
-			if d <= head_r:
-				var norm_d := d / head_r
-				var intensity := 1.0 - norm_d * 0.15
-				# Subtle face plate shading
-				var shade := -dy / head_r * 0.08
-				intensity += shade
-				img.set_pixel(x, y, Color(clampf(intensity, 0.0, 1.0), clampf(intensity, 0.0, 1.0), clampf(intensity, 0.0, 1.0), 1.0))
-			elif d <= head_r + 2.0:
-				var fade := 1.0 - (d - head_r) / 2.0
-				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, fade * 0.4))
-	# Helmet crest — taller spike
-	for dy in range(-6, 0):
-		var py := int(head_cy - head_r) + dy
-		var half_w := maxf(1.0 + float(dy + 6) * 0.25, 0.5)
-		for ddx in range(int(-half_w), int(half_w) + 1):
+			var dx := absf(float(x) - cx)
+			# Distance from hull edge
+			var dist_from_edge := dx - hw
+			if dist_from_edge > 0.0 and dist_from_edge < 5.0:
+				var glow := (1.0 - dist_from_edge / 5.0)
+				glow *= glow  # quadratic falloff
+				var existing := img.get_pixel(x, y)
+				if glow * 0.18 > existing.a:
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, glow * 0.18))
+	# Vertical glow above nose
+	for y in range(0, int(s * 0.05)):
+		var dist := float(int(s * 0.05) - y)
+		var glow := maxf(0.0, 1.0 - dist / 4.0)
+		glow *= glow
+		var px := int(cx)
+		if px >= 0 and px < size and y >= 0 and y < size:
+			img.set_pixel(px, y, Color(1.0, 1.0, 1.0, glow * 0.15))
+	# Glow below engines
+	for y in range(int(s * 1.0), mini(size, int(s * 1.0) + 5)):
+		var dist := float(y) - s
+		var glow := maxf(0.0, 1.0 - dist / 5.0)
+		for ddx in range(-3, 4):
 			var px := int(cx) + ddx
-			if px >= 0 and px < size and py >= 0 and py < size:
-				var ci := 1.0 - float(absf(ddx)) / (half_w + 0.001) * 0.2
-				img.set_pixel(px, py, Color(ci, ci, ci, 0.95))
-	# Visor: glowing eyes
-	var visor_y := int(head_cy + 1)
-	for side_offset: int in [-3, 3]:
-		var eye_x: int = int(cx) + side_offset
-		for edy in range(-1, 2):
-			for edx in range(-1, 2):
-				var px: int = eye_x + edx
-				var py: int = visor_y + edy
+			if px >= 0 and px < size and y >= 0 and y < size:
+				var xfade := 1.0 - absf(float(ddx)) / 4.0
+				img.set_pixel(px, y, Color(1.0, 1.0, 1.0, glow * xfade * 0.12))
+
+	# --- Pass 1: Main hull fill with metallic shading ---
+	for y in size:
+		var t := float(y) / s
+		if t < 0.0 or t > 1.0:
+			continue
+		var hw: float = _hw.call(t)
+		for x in size:
+			var dx := absf(float(x) - cx)
+			if dx <= hw:
+				# Metallic shading: brighter at center, darker at edges
+				var edge_t := dx / maxf(hw, 0.001)
+				var base_i := lerpf(0.72, 0.45, edge_t * edge_t)
+				# Slight vertical gradient: brighter near nose
+				base_i += (1.0 - t) * 0.08
+				img.set_pixel(x, y, Color(base_i, base_i, base_i, 1.0))
+
+	# --- Pass 2: Hull edge bevel (bright rim) ---
+	for y in size:
+		var t := float(y) / s
+		if t < 0.0 or t > 1.0:
+			continue
+		var hw: float = _hw.call(t)
+		for x in size:
+			var dx := absf(float(x) - cx)
+			if dx > hw - 1.5 and dx <= hw:
+				var rim_t := (dx - (hw - 1.5)) / 1.5
+				var i := lerpf(0.7, 0.92, rim_t)
+				img.set_pixel(x, y, Color(i, i, i, 1.0))
+
+	# --- Pass 3: Center spine line (nose to tail) ---
+	for y in size:
+		var t := float(y) / s
+		if t < 0.02 or t > 0.98:
+			continue
+		var hw: float = _hw.call(t)
+		if hw < 1.5:
+			continue
+		var px := int(cx)
+		if px >= 0 and px < size:
+			var existing := img.get_pixel(px, y)
+			if existing.a > 0.5:
+				var spine_i := minf(existing.r + 0.15, 1.0)
+				img.set_pixel(px, y, Color(spine_i, spine_i, spine_i, 1.0))
+
+	# --- Pass 4: Panel lines / seams for hull detail ---
+	# Horizontal panel lines at key sections
+	var panel_rows := [0.20, 0.35, 0.52, 0.70, 0.85]
+	for pr in panel_rows:
+		var py := int(pr * s)
+		if py < 0 or py >= size:
+			continue
+		var hw: float = _hw.call(pr)
+		for x in size:
+			var dx := absf(float(x) - cx)
+			if dx < hw - 1.0:
+				var existing := img.get_pixel(x, py)
+				if existing.a > 0.5:
+					var di := maxf(existing.r - 0.12, 0.0)
+					img.set_pixel(x, py, Color(di, di, di, 1.0))
+
+	# Diagonal panel lines on each side of hull
+	for side: float in [-1.0, 1.0]:
+		for yi in range(int(s * 0.25), int(s * 0.75)):
+			var t := float(yi) / s
+			var hw: float = _hw.call(t)
+			var line_x := int(cx + side * hw * 0.5 + side * float(yi - int(s * 0.25)) * 0.15)
+			if line_x >= 0 and line_x < size and yi >= 0 and yi < size:
+				var existing := img.get_pixel(line_x, yi)
+				if existing.a > 0.5:
+					var di := maxf(existing.r - 0.08, 0.0)
+					img.set_pixel(line_x, yi, Color(di, di, di, 1.0))
+
+	# --- Pass 5: Wing energy lines (bright streaks along wings) ---
+	for side: float in [-1.0, 1.0]:
+		# Main wing leading edge energy line
+		for yi in range(int(s * 0.55), int(s * 0.78)):
+			var t := float(yi) / s
+			var hw: float = _hw.call(t)
+			var wing_edge_x := int(cx + side * (hw - 0.5))
+			if wing_edge_x >= 0 and wing_edge_x < size and yi >= 0 and yi < size:
+				img.set_pixel(wing_edge_x, yi, Color(0.95, 0.95, 0.95, 1.0))
+		# Inner wing energy line
+		for yi in range(int(s * 0.58), int(s * 0.76)):
+			var t := float(yi) / s
+			var hw: float = _hw.call(t)
+			var inner_x := int(cx + side * hw * 0.6)
+			if inner_x >= 0 and inner_x < size and yi >= 0 and yi < size:
+				var existing := img.get_pixel(inner_x, yi)
+				if existing.a > 0.5:
+					var ei := minf(existing.r + 0.2, 1.0)
+					img.set_pixel(inner_x, yi, Color(ei, ei, ei, 1.0))
+		# Wing surface energy vein (subtle)
+		for yi in range(int(s * 0.60), int(s * 0.74)):
+			var t := float(yi) / s
+			var hw: float = _hw.call(t)
+			var vein_x := int(cx + side * hw * 0.35)
+			if vein_x >= 0 and vein_x < size and yi >= 0 and yi < size:
+				var existing := img.get_pixel(vein_x, yi)
+				if existing.a > 0.5:
+					var ei := minf(existing.r + 0.10, 1.0)
+					img.set_pixel(vein_x, yi, Color(ei, ei, ei, 1.0))
+
+	# --- Pass 6: Wing tip accents (bright spots at outermost wing points) ---
+	var wing_tip_y := int(s * 0.76)
+	for side: float in [-1.0, 1.0]:
+		var hw_tip: float = _hw.call(0.76)
+		var tip_x := int(cx + side * hw_tip)
+		for ddy in range(-2, 3):
+			for ddx in range(-2, 3):
+				var px := tip_x + ddx
+				var py := wing_tip_y + ddy
 				if px >= 0 and px < size and py >= 0 and py < size:
-					var ed := sqrt(float(edx * edx + edy * edy))
-					if ed <= 1.5:
-						img.set_pixel(px, py, Color(0.08, 0.08, 0.08, 1.0))
-	# Eye glow (bright dots at center of each eye)
-	for side_offset: int in [-3, 3]:
-		var ex := int(cx) + side_offset
-		if ex >= 0 and ex < size and visor_y >= 0 and visor_y < size:
-			img.set_pixel(ex, visor_y, Color(0.7, 0.7, 0.7, 1.0))
-	# Shoulder pauldrons with spike accents
-	var sides: Array[float] = [-1.0, 1.0]
-	for side in sides:
-		var shoulder_cx := cx + side * (r_body * 0.82)
-		var shoulder_cy := cy - size * 0.08
-		var shoulder_r := size * 0.13
+					var dd := sqrt(float(ddx * ddx + ddy * ddy))
+					if dd <= 2.5:
+						var gi := lerpf(1.0, 0.7, dd / 2.5)
+						var ga := lerpf(1.0, 0.4, dd / 2.5)
+						img.set_pixel(px, py, Color(gi, gi, gi, ga))
+
+	# --- Pass 7: Cockpit canopy (glowing dome near front) ---
+	var cockpit_cy := s * 0.18
+	var cockpit_rx := 3.5   # horizontal radius
+	var cockpit_ry := 5.0   # vertical radius (elongated)
+	# Cockpit dark rim
+	for y in size:
+		for x in size:
+			var dx := (float(x) - cx) / (cockpit_rx + 1.0)
+			var dy := (float(y) - cockpit_cy) / (cockpit_ry + 1.0)
+			var d := dx * dx + dy * dy
+			if d <= 1.0 and d > 0.65:
+				var rim_i := lerpf(0.50, 0.35, (d - 0.65) / 0.35)
+				img.set_pixel(x, y, Color(rim_i, rim_i, rim_i, 1.0))
+	# Cockpit bright interior
+	for y in size:
+		for x in size:
+			var dx := (float(x) - cx) / cockpit_rx
+			var dy := (float(y) - cockpit_cy) / cockpit_ry
+			var d := dx * dx + dy * dy
+			if d <= 1.0:
+				# Bright glowing dome, brightest at center
+				var ci := lerpf(1.0, 0.65, d)
+				# Slight upward highlight
+				ci += (1.0 - dy) * 0.05
+				ci = clampf(ci, 0.0, 1.0)
+				img.set_pixel(x, y, Color(ci, ci, ci, 1.0))
+
+	# --- Pass 8: Engine exhausts (2 side + 1 center at bottom) ---
+	var engine_y := s * 0.93
+	var engine_positions: Array[float] = [-3.5, 0.0, 3.5]
+	var engine_radii: Array[float] = [2.0, 2.5, 2.0]
+	for ei in engine_positions.size():
+		var ecx := cx + engine_positions[ei]
+		var er: float = engine_radii[ei]
 		for y in size:
 			for x in size:
-				var dx := float(x) - shoulder_cx
-				var dy := float(y) - shoulder_cy
+				var dx := float(x) - ecx
+				var dy := float(y) - engine_y
 				var d := sqrt(dx * dx + dy * dy)
-				if d <= shoulder_r:
-					var si := 1.0 - (d / shoulder_r) * 0.20
-					img.set_pixel(x, y, Color(si, si, si, 1.0))
-				elif d <= shoulder_r + 1.5:
-					var fade := 1.0 - (d - shoulder_r) / 1.5
-					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, fade * 0.3))
-		# Double spikes on each shoulder
-		for spike_off in [0.0, 3.0]:
-			var spike_x := int(shoulder_cx + side * (2.0 + spike_off * 0.3))
-			for sy in range(int(shoulder_cy - shoulder_r - 4 + int(spike_off)), int(shoulder_cy - shoulder_r)):
-				if spike_x >= 0 and spike_x < size and sy >= 0 and sy < size:
-					img.set_pixel(spike_x, sy, Color(1.0, 1.0, 1.0, 0.85))
-	# Glowing chest emblem (diamond with energy core)
-	var emblem_y := int(cy - 1)
-	for dy in range(-4, 5):
-		for ddx in range(-4, 5):
-			if absf(ddx) + absf(dy) <= 4:
-				var px := int(cx) + ddx
-				var py := emblem_y + dy
+				if d <= er:
+					# Bright white-hot core
+					var ni := lerpf(1.0, 0.75, d / er)
+					img.set_pixel(x, y, Color(ni, ni, ni, 1.0))
+				elif d <= er + 2.0:
+					# Exhaust glow falloff
+					var glow := 1.0 - (d - er) / 2.0
+					glow *= glow
+					var existing := img.get_pixel(x, y)
+					var new_a := glow * 0.5
+					if new_a > existing.a:
+						img.set_pixel(x, y, Color(1.0, 1.0, 1.0, new_a))
+
+	# Engine exhaust plume glow below engines
+	for ei in engine_positions.size():
+		var ecx := cx + engine_positions[ei]
+		var er: float = engine_radii[ei]
+		for dy_off in range(1, 5):
+			var py := int(engine_y) + int(er) + dy_off
+			if py >= size:
+				break
+			var fade := 1.0 - float(dy_off) / 5.0
+			var plume_hw := er * fade * 0.8
+			for ddx in range(int(-plume_hw) - 1, int(plume_hw) + 2):
+				var px := int(ecx) + ddx
 				if px >= 0 and px < size and py >= 0 and py < size:
-					var ed := float(absf(ddx) + absf(dy)) / 4.0
-					var ei := 1.0 - ed * 0.25
-					img.set_pixel(px, py, Color(ei, ei, ei, 1.0))
-	# Emblem bright core
-	for dy in range(-1, 2):
+					var xf := 1.0 - absf(float(ddx)) / (plume_hw + 0.001)
+					xf = clampf(xf, 0.0, 1.0)
+					var pi := fade * xf * 0.6
+					var existing := img.get_pixel(px, py)
+					if pi > existing.a:
+						img.set_pixel(px, py, Color(1.0, 1.0, 1.0, pi))
+
+	# --- Pass 9: Additional hull detail - weapon mounts on wings ---
+	for side: float in [-1.0, 1.0]:
+		var mount_y := int(s * 0.65)
+		var hw_at: float = _hw.call(0.65)
+		var mount_x := int(cx + side * hw_at * 0.75)
+		for ddy in range(-2, 3):
+			for ddx in range(-1, 2):
+				var px := mount_x + ddx
+				var py := mount_y + ddy
+				if px >= 0 and px < size and py >= 0 and py < size:
+					var existing := img.get_pixel(px, py)
+					if existing.a > 0.5:
+						var mi := minf(existing.r + 0.18, 1.0)
+						img.set_pixel(px, py, Color(mi, mi, mi, 1.0))
+
+	# --- Pass 10: Nose tip bright accent ---
+	var nose_y := int(s * 0.02)
+	for ddy in range(0, 3):
 		for ddx in range(-1, 2):
 			var px := int(cx) + ddx
-			var py := emblem_y + dy
+			var py := nose_y + ddy
 			if px >= 0 and px < size and py >= 0 and py < size:
-				img.set_pixel(px, py, Color(1.0, 1.0, 1.0, 1.0))
-	# Energy rune lines on torso (diagonal)
-	for ri in 3:
-		var ry_start := int(cy - 4 + ri * 5)
-		for s in 6:
-			var rx := int(cx - 5 + s * 2)
-			var ry := ry_start + s
-			if rx >= 0 and rx < size and ry >= 0 and ry < size:
-				var existing := img.get_pixel(rx, ry)
+				var dd := sqrt(float(ddx * ddx + ddy * ddy))
+				var ni := lerpf(1.0, 0.8, dd / 2.5)
+				img.set_pixel(px, py, Color(ni, ni, ni, 1.0))
+
+	# --- Pass 11: Subtle cross-hull energy shimmer ---
+	for y in size:
+		var t := float(y) / s
+		if t < 0.10 or t > 0.90:
+			continue
+		var hw: float = _hw.call(t)
+		for x in size:
+			var dx := absf(float(x) - cx)
+			if dx < hw - 1.0:
+				var existing := img.get_pixel(x, y)
 				if existing.a > 0.5:
-					img.set_pixel(rx, ry, Color(minf(existing.r + 0.12, 1.0), minf(existing.g + 0.12, 1.0), minf(existing.b + 0.12, 1.0), 1.0))
-	# Sword on the right side with glow
-	var sword_x := int(cx + r_body * 0.58)
-	var sword_top := int(cy - size * 0.28)
-	var sword_bot := int(cy + size * 0.38)
-	for sy in range(sword_top, sword_bot + 1):
-		if sword_x >= 0 and sword_x < size and sy >= 0 and sy < size:
-			# Blade brightness varies along length
-			var blade_t := float(sy - sword_top) / float(sword_bot - sword_top)
-			var bi := 1.0 - blade_t * 0.15
-			img.set_pixel(sword_x, sy, Color(bi, bi, bi, 0.95))
-			if sword_x + 1 < size:
-				img.set_pixel(sword_x + 1, sy, Color(bi * 0.8, bi * 0.8, bi * 0.8, 0.45))
-			# Blade edge glow
-			if sword_x - 1 >= 0:
-				img.set_pixel(sword_x - 1, sy, Color(1.0, 1.0, 1.0, 0.15))
-	# Sword crossguard (wider)
-	var guard_y := int(cy - size * 0.04)
-	for gx in range(sword_x - 3, sword_x + 4):
-		if gx >= 0 and gx < size and guard_y >= 0 and guard_y < size:
-			var gd := absf(float(gx - sword_x)) / 3.0
-			img.set_pixel(gx, guard_y, Color(1.0 - gd * 0.15, 1.0 - gd * 0.15, 1.0 - gd * 0.15, 0.9))
-	# Sword pommel glow
-	if sword_x >= 0 and sword_x < size and sword_bot + 1 < size:
-		for pdx in range(-1, 2):
-			for pdy in range(0, 2):
-				var px := sword_x + pdx
-				var py := sword_bot + pdy
-				if px >= 0 and px < size and py >= 0 and py < size:
-					img.set_pixel(px, py, Color(0.9, 0.9, 0.9, 0.7))
+					# Subtle wave pattern
+					var wave := sin(float(x) * 1.2 + float(y) * 0.8) * 0.03
+					wave += sin(float(x) * 0.5 - float(y) * 1.5) * 0.02
+					var ni := clampf(existing.r + wave, 0.0, 1.0)
+					img.set_pixel(x, y, Color(ni, ni, ni, 1.0))
+
 	return ImageTexture.create_from_image(img)
 
 static func _solid_tex(w: int, h: int, color: Color) -> ImageTexture:

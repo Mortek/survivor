@@ -34,7 +34,7 @@ var _flash_tween: Tween    = null
 # ── Dev speed button ──────────────────────────────────────────────────────────
 var _speed_btn:   Button = null
 var _speed_index: int    = 0
-const _SPEEDS := [1, 2, 3, 4, 5]
+const _SPEEDS := [1, 2, 3, 4, 5, 10, 20]
 
 # ── Audio ─────────────────────────────────────────────────────────────────────
 var _audio: Node = null
@@ -269,6 +269,9 @@ func _create_speed_button() -> void:
 	_speed_btn = Button.new()
 	_speed_btn.text = "1x"
 	_speed_btn.add_theme_font_size_override("font_size", 13)
+	_speed_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	_speed_btn.z_index      = 31
+	_speed_btn.z_as_relative = false
 	_speed_btn.pressed.connect(_on_speed_pressed)
 	$UI/HUD.add_child(_speed_btn)
 	call_deferred("_position_speed_btn")
@@ -914,7 +917,7 @@ func _spawn_magnet_orb(world_pos: Vector2) -> void:
 		# Zoom out camera gently
 		if camera:
 			var tw_zoom := camera.create_tween()
-			tw_zoom.tween_property(camera, "zoom", Vector2(0.82, 0.82), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw_zoom.tween_property(camera, "zoom", Vector2(0.55, 0.55), 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			_wait_for_coins_then_zoom_in()
 	)
 
@@ -1198,14 +1201,10 @@ func _build_settings_button() -> void:
 	var btn := Button.new()
 	btn.text = "⚙"
 	btn.add_theme_font_size_override("font_size", 20)
-	btn.custom_minimum_size = Vector2(36, 26)
+	btn.custom_minimum_size = Vector2(48, 26)
 	btn.process_mode = Node.PROCESS_MODE_ALWAYS
-	# Flat transparent background so the icon reads pure white
-	var flat := StyleBoxFlat.new()
-	flat.bg_color = Color.TRANSPARENT
-	flat.set_content_margin_all(0)
-	for state in ["normal", "hover", "pressed", "focus"]:
-		btn.add_theme_stylebox_override(state, flat)
+	btn.z_index      = 31
+	btn.z_as_relative = false
 	btn.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0))
 	btn.add_theme_color_override("font_hover_color", Color(0.7, 0.9, 1.0, 1.0))
 	btn.pressed.connect(_open_settings)
@@ -1215,7 +1214,7 @@ func _build_settings_button() -> void:
 
 func _position_settings_btn(btn: Button) -> void:
 	var vp := get_viewport_rect().size
-	btn.position = Vector2(vp.x - 100.0, 26.0)
+	btn.position = Vector2(vp.x - 108.0, 26.0)
 
 func _open_settings() -> void:
 	if _settings_overlay:
