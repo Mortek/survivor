@@ -56,9 +56,6 @@ var stats: Dictionary = {
 	"armor":              0,
 	"lifesteal":          0.0,
 	"regen":              0.0,
-	# Boomerang
-	"boomerang_enabled":  false,
-	"boomerang_level":    1,
 	# Lightning Chain
 	"lightning_enabled":  false,
 	"lightning_level":    1,
@@ -67,7 +64,6 @@ var stats: Dictionary = {
 	"synergy_aura":       false,
 	"enemy_speed_mult":   1.0,
 	# Evolution flags
-	"death_orbit":        false,
 	"thunder_god":        false,
 	# New mechanics
 	"pierce":             0,
@@ -240,12 +236,7 @@ func _check_achievements() -> void:
 	_try_achieve("level10",     "Unstoppable",     current_level >= 10)
 	_try_achieve("combo10",     "Combo King!",     combo_count >= 10)
 	_try_achieve("evolution",   "Evolved!",
-		stats.get("death_orbit",    false) or
 		stats.get("thunder_god",    false)
-	)
-	_try_achieve("triple_tree", "Triple Threat",
-		stats.get("boomerang_enabled", false) and
-		stats.get("lightning_enabled", false)
 	)
 	_try_achieve("wave10",      "Wave Veteran",  wave >= 10)
 	_try_achieve("big_combo",   "On Fire!",      combo_count >= 20)
@@ -469,28 +460,6 @@ var _upgrade_pool: Array = [
 		"desc":      "+1 Shield Charge\nAbsorbs one hit",
 		"apply":     func() -> void: stats["shield_charges"] += 1,
 	},
-	# ── Boomerang tree ─────────────────────────────────────────────────────────
-	{
-		"id":        "boomerang_unlock",
-		"name":      "Orbital Strike",
-		"desc":      "UNLOCK: Orbiting Blade\nSpins around you dealing damage",
-		"condition": func() -> bool: return not stats.get("boomerang_enabled", false),
-		"apply":     func() -> void: stats["boomerang_enabled"] = true,
-	},
-	{
-		"id":        "boomerang_lvl2",
-		"name":      "Orbital Mastery",
-		"desc":      "Boomerang: +50% Dmg\nFaster orbit",
-		"condition": func() -> bool: return stats.get("boomerang_enabled", false) and stats.get("boomerang_level", 1) == 1,
-		"apply":     func() -> void: stats["boomerang_level"] = 2,
-	},
-	{
-		"id":        "boomerang_lvl3",
-		"name":      "Orbital Mastery II",
-		"desc":      "Boomerang: +100% Dmg\nWider orbit",
-		"condition": func() -> bool: return stats.get("boomerang_level", 1) == 2,
-		"apply":     func() -> void: stats["boomerang_level"] = 3,
-	},
 	# ── Lightning Chain tree ───────────────────────────────────────────────────
 	{
 		"id":        "lightning_unlock",
@@ -521,14 +490,6 @@ var _upgrade_pool: Array = [
 		"apply":     func() -> void: stats["lightning_level"] = 4,
 	},
 	# ── Evolutions ─────────────────────────────────────────────────────────────
-	{
-		"id":        "death_orbit",
-		"name":      "★ Death Orbit",
-		"desc":      "EVOLUTION\nTriple boomerang\n+200% Orbital Damage",
-		"condition": func() -> bool:
-			return stats.get("boomerang_level", 1) >= 3 and stats.get("projectile_count", 1) >= 3 and not stats.get("death_orbit", false),
-		"apply":     func() -> void: stats["death_orbit"] = true,
-	},
 	{
 		"id":        "thunder_god",
 		"name":      "★ Thunder God",

@@ -18,9 +18,9 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	lifetime_timer.timeout.connect(_on_lifetime_timeout)
 	if not sprite.texture:
-		# Glowing elongated projectile: bright cyan core with glow falloff
-		var pw := 16
-		var ph := 7
+		# Epic glowing projectile with bright core, color layers, and outer glow
+		var pw := 24
+		var ph := 10
 		var img := Image.create(pw, ph, false, Image.FORMAT_RGBA8)
 		img.fill(Color.TRANSPARENT)
 		var cx_f := (pw - 1) * 0.5
@@ -29,13 +29,24 @@ func _ready() -> void:
 			for px in pw:
 				var nx := absf(float(px) - cx_f) / (cx_f + 0.001)
 				var ny := absf(float(py) - cy_f) / (cy_f + 0.001)
-				var d  := nx * nx * 0.6 + ny * ny
+				# Elongated ellipse with front-weighted glow
+				var front_bias := 0.3 if float(px) < cx_f else 0.6
+				var d  := nx * nx * front_bias + ny * ny
 				if d <= 1.0:
 					var intensity := 1.0 - d
-					var bright := Color(0.4 + intensity * 0.6, 1.0, 1.0, intensity * intensity)
-					img.set_pixel(px, py, bright)
+					var i2 := intensity * intensity
+					# Layered color: white core -> cyan -> blue outer
+					var r := lerpf(0.2, 1.0, i2)
+					var g := lerpf(0.7, 1.0, i2)
+					var b := 1.0
+					var a := clampf(i2 + 0.15, 0.0, 1.0)
+					img.set_pixel(px, py, Color(r, g, b, a))
+				elif d <= 1.6:
+					# Soft outer glow halo
+					var glow := (1.6 - d) / 0.6
+					img.set_pixel(px, py, Color(0.3, 0.7, 1.0, glow * glow * 0.35))
 		sprite.texture = ImageTexture.create_from_image(img)
-		sprite.scale   = Vector2(1.2, 1.2)
+		sprite.scale   = Vector2(1.3, 1.3)
 
 func launch(direction: Vector2, damage: int, speed: float) -> void:
 	_damage           = damage

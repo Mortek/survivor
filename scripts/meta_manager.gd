@@ -134,7 +134,7 @@ const PERMANENT_UPGRADES: Array = [
 	{
 		"id":         "coin_magnet",
 		"name":       "Coin Magnet",
-		"desc":       "+25 Pickup Radius + magnet orb chance +3% per level",
+		"desc":       "+25 Pickup Radius + magnet orb chance +0.25% per level",
 		"max_level":  5,
 		"base_cost":  100,
 		"cost_scale": 90,

@@ -100,24 +100,52 @@ func _thunder_aoe(pos: Vector2, dmg: int, already_hit: Array, enemies: Array) ->
 
 # ── Visuals ───────────────────────────────────────────────────────────────────
 func _draw_bolt(from: Vector2, to: Vector2) -> void:
-	# Draw multiple layered lines for a glowing effect
+	# Epic glowing bolt with 5 layers
 	var points: Array[Vector2] = []
 	points.append(from)
-	for i in range(1, 9):
-		var t  := float(i) / 9.0
+	for i in range(1, 11):
+		var t  := float(i) / 11.0
 		var p  := from.lerp(to, t)
-		p += Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
+		var jitter := lerpf(18.0, 10.0, t)
+		p += Vector2(randf_range(-jitter, jitter), randf_range(-jitter, jitter))
 		points.append(p)
 	points.append(to)
 
-	var glow := _create_line_layer(points,  9, 6.0, Color(0.3,  0.75, 1.0, 0.25))
-	var mid  := _create_line_layer(points, 10, 3.0, Color(0.55, 0.9,  1.0, 0.75))
-	var core := _create_line_layer(points, 11, 1.2, Color(0.85, 1.0,  1.0, 1.0))
+	var bloom  := _create_line_layer(points,  8, 14.0, Color(0.2,  0.5,  1.0, 0.08))
+	var glow   := _create_line_layer(points,  9,  8.0, Color(0.3,  0.7,  1.0, 0.18))
+	var outer  := _create_line_layer(points, 10,  4.5, Color(0.45, 0.85, 1.0, 0.55))
+	var mid    := _create_line_layer(points, 11,  2.5, Color(0.7,  0.95, 1.0, 0.85))
+	var core   := _create_line_layer(points, 12,  1.0, Color(1.0,  1.0,  1.0, 1.0))
 
-	for line: Line2D in [glow, mid, core]:
+	for line: Line2D in [bloom, glow, outer, mid, core]:
 		var tw: Tween = line.create_tween()
-		tw.tween_property(line, "modulate:a", 0.0, 0.28)
+		tw.tween_property(line, "modulate:a", 0.0, 0.32)
 		tw.tween_callback(line.queue_free)
+
+	# Impact flash at hit position
+	_draw_impact_flash(to)
+
+func _draw_impact_flash(pos: Vector2) -> void:
+	var flash := Node2D.new()
+	flash.global_position = pos
+	flash.z_index = 13
+	get_tree().current_scene.add_child(flash)
+	flash.set_meta("progress", 0.0)
+	flash.connect("draw", func() -> void:
+		var p: float = flash.get_meta("progress", 0.0)
+		var alpha := (1.0 - p) * 0.8
+		var r := 6.0 + p * 12.0
+		flash.draw_circle(Vector2.ZERO, r, Color(0.5, 0.85, 1.0, alpha * 0.3))
+		flash.draw_circle(Vector2.ZERO, r * 0.5, Color(0.8, 0.95, 1.0, alpha * 0.6))
+		flash.draw_circle(Vector2.ZERO, r * 0.2, Color(1.0, 1.0, 1.0, alpha))
+	)
+	var tw := flash.create_tween()
+	tw.tween_method(func(v: float) -> void:
+		if is_instance_valid(flash):
+			flash.set_meta("progress", v)
+			flash.queue_redraw()
+	, 0.0, 1.0, 0.2)
+	tw.tween_callback(flash.queue_free)
 
 func _create_line_layer(points: Array[Vector2], z: int, w: float, col: Color) -> Line2D:
 	var line := Line2D.new()
@@ -131,13 +159,11 @@ func _create_line_layer(points: Array[Vector2], z: int, w: float, col: Color) ->
 	return line
 
 func _draw_aoe_ring(pos: Vector2) -> void:
-	# Draw an expanding ring at the AOE position
 	var ring := Node2D.new()
 	ring.global_position = pos
 	ring.z_index = 9
 	get_tree().current_scene.add_child(ring)
-	# We'll animate the scale of a drawn circle via a script approach using a timer
-	var duration := 0.35
+	var duration := 0.4
 	var sc := get_tree().create_tween()
 	sc.tween_method(
 		func(progress: float) -> void:
@@ -149,7 +175,13 @@ func _draw_aoe_ring(pos: Vector2) -> void:
 	sc.tween_callback(ring.queue_free)
 	ring.connect("draw", func() -> void:
 		var p: float = ring.get_meta("progress", 0.0)
+		var alpha := (1.0 - p)
+		# Multi-layered expanding ring
 		ring.draw_arc(Vector2.ZERO, THUNDER_GOD_AOE_RADIUS * p,
-			0.0, TAU, 32, Color(0.55, 0.88, 1.0, 1.0 - p), 3.0)
+			0.0, TAU, 48, Color(0.3, 0.6, 1.0, alpha * 0.15), 12.0)
+		ring.draw_arc(Vector2.ZERO, THUNDER_GOD_AOE_RADIUS * p,
+			0.0, TAU, 48, Color(0.55, 0.88, 1.0, alpha * 0.6), 4.0)
+		ring.draw_arc(Vector2.ZERO, THUNDER_GOD_AOE_RADIUS * p,
+			0.0, TAU, 48, Color(0.9, 1.0, 1.0, alpha), 1.5)
 	)
 	ring.set_meta("progress", 0.0)

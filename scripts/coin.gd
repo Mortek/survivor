@@ -58,7 +58,9 @@ func _process(delta: float) -> void:
 			tw.tween_property(sprite, "scale", Vector2(1.6, 1.6), 0.07)
 			tw.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.10)
 		var dir := dir_vec / maxf(dist, 1.0)
-		var speed_factor: float = lerpf(4.0, 1.0, clampf(dist / float(GameManager.stats["pickup_radius"]), 0.0, 1.0))
+		# Magnet-like pull: exponentially faster as distance decreases
+		var proximity := 1.0 - clampf(dist / maxf(float(GameManager.stats["pickup_radius"]) * 1.5, 1.0), 0.0, 1.0)
+		var speed_factor: float = 1.0 + proximity * proximity * 8.0
 		global_position += dir * ATTRACT_SPEED * speed_factor * delta
 	else:
 		# Gentle bob in place

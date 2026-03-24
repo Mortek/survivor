@@ -62,11 +62,11 @@ func _layout_hud() -> void:
 	xp_bar.set_anchor_and_offset(SIDE_BOTTOM, 1.0,   0.0)
 	xp_bar.custom_minimum_size = Vector2(0, 18)
 
-	# ── Timer: centered horizontally, just below health bar ──
-	timer_label.set_anchor_and_offset(SIDE_LEFT,   0.5, -70.0)
+	# ── Timer: centered horizontally, between wave text and stats button ──
+	timer_label.set_anchor_and_offset(SIDE_LEFT,   0.5, -50.0)
 	timer_label.set_anchor_and_offset(SIDE_TOP,    0.0,  26.0)
-	timer_label.set_anchor_and_offset(SIDE_RIGHT,  0.5,  70.0)
-	timer_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0,  46.0)
+	timer_label.set_anchor_and_offset(SIDE_RIGHT,  0.5,  50.0)
+	timer_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0,  44.0)
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.add_theme_font_size_override("font_size", 17)
 

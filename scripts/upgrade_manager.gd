@@ -39,12 +39,21 @@ func _show_upgrades(choices: Array) -> void:
 
 	# ── Centered panel ────────────────────────────────────────────────────────
 	var pw := minf(vp.x - 16.0, 460.0)
-	var ph := minf(float(choices.size()) * 96.0 + 80.0, vp.y - 40.0)
+	# Size to content: estimate height but cap it
+	var estimated_h := float(choices.size()) * 96.0 + 100.0
+	var ph := minf(estimated_h, vp.y - 80.0)
 
 	var panel := PanelContainer.new()
 	panel.name     = "DynamicPanel"
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.10, 0.10, 0.16, 0.95)
+	style.set_corner_radius_all(14)
+	style.set_content_margin_all(16)
+	style.border_color = Color(0.3, 0.35, 0.5, 0.3)
+	style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", style)
 	add_child(panel)
 
 	var outer := VBoxContainer.new()
@@ -84,6 +93,11 @@ func _show_upgrades(choices: Array) -> void:
 func _build_card(upgrade: Dictionary) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = Color(0.14, 0.14, 0.22, 0.9)
+	card_style.set_corner_radius_all(10)
+	card_style.set_content_margin_all(12)
+	card.add_theme_stylebox_override("panel", card_style)
 
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 12)

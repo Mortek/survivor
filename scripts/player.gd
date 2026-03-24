@@ -1,6 +1,6 @@
 extends CharacterBody2D
 ## Player – centered on screen, moves via virtual joystick, auto-attacks.
-## Manages secondary weapons (Boomerang, LightningChain) as children.
+## Manages secondary weapons (LightningChain) as children.
 
 # ── Signals ───────────────────────────────────────────────────────────────────
 signal health_changed(current_hp: int, max_hp: int)
@@ -22,7 +22,6 @@ var is_invincible: bool   = false
 var move_dir:      Vector2 = Vector2.ZERO
 
 # ── Secondary weapons ─────────────────────────────────────────────────────────
-var _boomerangs: Array          = []
 var _lightning:  LightningChain = null
 
 # ── Regen & aura accumulators ─────────────────────────────────────────────────
@@ -65,7 +64,7 @@ func _ready() -> void:
 	_cache_stats()
 	if not sprite.texture:
 		sprite.texture = _warrior_tex(32)
-		sprite.modulate = Color(0.35, 0.6, 1.0)
+		sprite.modulate = _BASE_COLOR
 	GameManager.level_changed.connect(func(_l: int) -> void: Input.vibrate_handheld(60))
 	GameManager.level_changed.connect(func(_l: int) -> void: _levelup_ring())
 
@@ -187,11 +186,13 @@ func on_kill() -> void:
 	if GameManager.stats.get("battle_cry", false):
 		_battle_cry_timer = BATTLE_CRY_DURATION
 
+const _BASE_COLOR := Color(0.35, 0.6, 1.0)
+
 func _flash(color: Color) -> void:
 	sprite.modulate = color
 	await get_tree().create_timer(0.12).timeout
 	if is_instance_valid(sprite):
-		sprite.modulate = Color.WHITE
+		sprite.modulate = _BASE_COLOR
 
 # ── Synergy Aura ──────────────────────────────────────────────────────────────
 func _pulse_aura() -> void:
@@ -266,20 +267,6 @@ func _nearest_enemies(count: int) -> Array:
 
 # ── Secondary Weapon Management ───────────────────────────────────────────────
 func _check_weapons() -> void:
-	# ── Boomerang(s) ───────────────────────────────────────────────────────────
-	if GameManager.stats.get("boomerang_enabled", false):
-		var target_count := 3 if GameManager.stats.get("death_orbit", false) else 1
-		while _boomerangs.size() < target_count:
-			var b := Boomerang.new()
-			b._angle = (TAU / target_count) * _boomerangs.size()
-			add_child(b)
-			_boomerangs.append(b)
-		var boom_lvl := int(GameManager.stats.get("boomerang_level", 1))
-		if GameManager.stats.get("death_orbit", false):
-			boom_lvl = 5
-		for b in _boomerangs:
-			b.set_level(boom_lvl)
-
 	# ── Lightning Chain ─────────────────────────────────────────────────────────
 	if GameManager.stats.get("lightning_enabled", false):
 		if not _lightning:
@@ -331,37 +318,69 @@ static func _warrior_tex(size: int) -> ImageTexture:
 	img.fill(Color.TRANSPARENT)
 	var cx := (size - 1) * 0.5
 	var cy := (size - 1) * 0.5
-	# Body: octagonal shape
-	var r_body := size * 0.46
+	# Body: octagonal armored shape with gradient
+	var r_body := size * 0.44
 	for y in size:
 		for x in size:
 			var dx := float(x) - cx
 			var dy := float(y) - cy
 			var angle := atan2(dy, dx)
-			# Octagon
 			var sector := fmod(absf(angle) + PI / 8.0, PI / 4.0) - PI / 8.0
 			var oct_r  := r_body / cos(sector) * cos(PI / 8.0)
 			var d := sqrt(dx * dx + dy * dy)
-			if d <= oct_r * 0.94:
-				img.set_pixel(x, y, Color.WHITE)
-	# Helmet / head bump at top
-	var head_r := size * 0.18
-	var head_cy := cy - size * 0.28
+			if d <= oct_r * 0.96:
+				# Gradient from center to edge
+				var intensity := 1.0 - (d / oct_r) * 0.35
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= oct_r * 1.02:
+				# Bright edge rim
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.5))
+	# Helmet with visor slit
+	var head_r := size * 0.20
+	var head_cy := cy - size * 0.30
 	for y in size:
 		for x in size:
 			var dx := float(x) - cx
 			var dy := float(y) - head_cy
-			if dx*dx + dy*dy <= head_r * head_r:
-				img.set_pixel(x, y, Color.WHITE)
-	# Inner armor detail: horizontal line across middle
-	var arm_y := int(cy)
-	var arm_x1 := int(cx - size * 0.30)
-	var arm_x2 := int(cx + size * 0.30)
-	for px in range(arm_x1, arm_x2 + 1):
-		for py in range(arm_y - 1, arm_y + 2):
+			var d := sqrt(dx * dx + dy * dy)
+			if d <= head_r:
+				var intensity := 1.0 - (d / head_r) * 0.2
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= head_r + 1.0:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.4))
+	# Visor slit (dark horizontal line on helmet)
+	var visor_y := int(head_cy + 1)
+	for px in range(int(cx - 4), int(cx + 5)):
+		if px >= 0 and px < size and visor_y >= 0 and visor_y < size:
+			img.set_pixel(px, visor_y, Color(0.2, 0.2, 0.2, 1.0))
+	# Shoulder pauldrons
+	var sides: Array[float] = [-1.0, 1.0]
+	for side in sides:
+		var shoulder_cx := cx + side * (r_body * 0.75)
+		var shoulder_cy := cy - size * 0.08
+		var shoulder_r := size * 0.10
+		for y in size:
+			for x in size:
+				var dx := float(x) - shoulder_cx
+				var dy := float(y) - shoulder_cy
+				var d := sqrt(dx * dx + dy * dy)
+				if d <= shoulder_r:
+					img.set_pixel(x, y, Color(0.9, 0.9, 0.9, 1.0))
+	# Armor belt line across middle
+	var belt_y := int(cy + 2)
+	for px in range(int(cx - r_body * 0.6), int(cx + r_body * 0.6) + 1):
+		for py in range(belt_y - 1, belt_y + 1):
 			if px >= 0 and px < size and py >= 0 and py < size:
-				# Keep white but could add detail
-				pass
+				img.set_pixel(px, py, Color(0.55, 0.55, 0.55, 1.0))
+	# Center chest emblem (small bright diamond)
+	var emblem_y := int(cy - 3)
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			if absf(dx) + absf(dy) <= 2:
+				var px := int(cx) + dx
+				var py := emblem_y + dy
+				if px >= 0 and px < size and py >= 0 and py < size:
+					img.set_pixel(px, py, Color(1.0, 1.0, 1.0, 0.9))
 	return ImageTexture.create_from_image(img)
 
 static func _solid_tex(w: int, h: int, color: Color) -> ImageTexture:

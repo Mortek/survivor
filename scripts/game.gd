@@ -63,7 +63,7 @@ var _shield_bar: HBoxContainer = null
 
 # ── Off-screen enemy indicators ───────────────────────────────────────────────
 var _indicator_layer:  Control = null
-var _indicator_labels: Array   = []   # pre-allocated pool, reused each update
+var _indicator_nodes:  Array   = []   # pre-allocated Node2D pool with triangle draw
 var _indicator_timer:  float   = 0.0
 const INDICATOR_UPDATE_INTERVAL := 0.20
 const INDICATOR_POOL_SIZE       := 8
@@ -392,9 +392,9 @@ func _build_wave_countdown() -> void:
 	_wave_countdown_label.modulate             = Color(1.0, 1.0, 0.8, 0.7)
 	_wave_countdown_label.z_index              = 11
 	_wave_countdown_label.set_anchor_and_offset(SIDE_LEFT,   0.5, -55.0)
-	_wave_countdown_label.set_anchor_and_offset(SIDE_TOP,    0.0,  48.0)
+	_wave_countdown_label.set_anchor_and_offset(SIDE_TOP,    0.0,  50.0)
 	_wave_countdown_label.set_anchor_and_offset(SIDE_RIGHT,  0.5,  55.0)
-	_wave_countdown_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0,  64.0)
+	_wave_countdown_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0,  66.0)
 	ui.add_child(_wave_countdown_label)
 
 # ── Kill Feed ─────────────────────────────────────────────────────────────────
@@ -529,9 +529,9 @@ func _on_enemy_spawned(enemy: Node) -> void:
 
 func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int, hit_dir: Vector2 = Vector2.ZERO) -> void:
 	call_deferred("_spawn_coin", world_pos, xp)
-	# Compute approx bullet direction: from player toward enemy
-	var approx_dir := (world_pos - player.global_position).normalized()
-	call_deferred("_spawn_death_particles", world_pos, color, approx_dir)
+	# Use the actual hit direction from the killing projectile
+	var splash_dir := hit_dir if hit_dir.length() > 0.1 else (world_pos - player.global_position).normalized()
+	call_deferred("_spawn_death_particles", world_pos, color, splash_dir)
 	# Bonus coin drop chance (Lucky Breaks meta upgrade)
 	var extra_drop: float = GameManager.stats.get("lucky_drop_chance", 0.0)
 	if randf() < 0.01 + GameManager.stats.get("magnet_orb_bonus", 0.0):
@@ -663,6 +663,7 @@ func _build_curse_dialog(options: Array) -> Control:
 	root.add_child(bg)
 
 	var panel := PanelContainer.new()
+	_styled_panel(panel, 18)
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	root.add_child(panel)
@@ -714,6 +715,11 @@ func _build_curse_dialog(options: Array) -> Control:
 func _build_curse_card(curse: Dictionary, dialog_root: Control) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = Color(0.14, 0.14, 0.22, 0.9)
+	card_style.set_corner_radius_all(10)
+	card_style.set_content_margin_all(12)
+	card.add_theme_stylebox_override("panel", card_style)
 
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 10)
@@ -865,23 +871,24 @@ func _spawn_magnet_orb(world_pos: Vector2) -> void:
 		if _audio:
 			_audio.play_any("coin_attract")
 		orb.queue_free()
-		# Zoom out camera
+		# Zoom out camera gently
 		if camera:
 			var tw_zoom := camera.create_tween()
-			tw_zoom.tween_property(camera, "zoom", Vector2(0.72, 0.72), 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-			# Poll until all coins are collected, then zoom back in
+			tw_zoom.tween_property(camera, "zoom", Vector2(0.82, 0.82), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			_wait_for_coins_then_zoom_in()
 	)
 
 func _wait_for_coins_then_zoom_in() -> void:
+	# Small delay before checking, let coins start moving
+	await get_tree().create_timer(0.15).timeout
 	var elapsed := 0.0
-	while elapsed < 5.0 and coins_node.get_child_count() > 0:
+	while elapsed < 4.0 and coins_node.get_child_count() > 0:
 		await get_tree().process_frame
 		elapsed += get_process_delta_time()
-	# Zoom back in
+	# Smooth zoom back in
 	if camera and is_instance_valid(camera):
 		var tw_in := camera.create_tween()
-		tw_in.tween_property(camera, "zoom", Vector2(1.0, 1.0), 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw_in.tween_property(camera, "zoom", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 
 func _emit_magnet_particle(world_pos: Vector2, color: Color) -> void:
 	var p := ColorRect.new()
@@ -953,6 +960,8 @@ func _position_pause_overlay() -> void:
 # ── Stats Button & Popup ───────────────────────────────────────────────────────
 var _stats_popup: Control = null
 var _stats_owns_pause: bool = false
+var _stats_btn: Button = null
+var _settings_btn_ref: Button = null
 
 func _build_stats_button() -> void:
 	var btn := Button.new()
@@ -963,6 +972,7 @@ func _build_stats_button() -> void:
 	btn.z_index        = 35
 	btn.z_as_relative  = false
 	btn.pressed.connect(_open_stats_popup)
+	_stats_btn = btn
 	$UI/HUD.add_child(btn)
 	call_deferred("_position_stats_btn", btn)
 
@@ -1013,6 +1023,7 @@ func _build_stats_popup() -> Control:
 	root.add_child(bg)
 
 	var panel := PanelContainer.new()
+	_styled_panel(panel, 16)
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -1149,7 +1160,9 @@ func _build_settings_button() -> void:
 	btn.add_theme_font_size_override("font_size", 18)
 	btn.custom_minimum_size = Vector2(36, 26)
 	btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	btn.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	btn.pressed.connect(_open_settings)
+	_settings_btn_ref = btn
 	$UI/HUD.add_child(btn)
 	call_deferred("_position_settings_btn", btn)
 
@@ -1181,8 +1194,9 @@ func _build_settings_overlay() -> Control:
 	root.add_child(bg)
 
 	var pw := minf(vp.x - 16.0, 380.0)
-	var ph := 360.0
+	var ph := 320.0
 	var panel := PanelContainer.new()
+	_styled_panel(panel, 20)
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	root.add_child(panel)
@@ -1192,7 +1206,7 @@ func _build_settings_overlay() -> Control:
 	panel.add_child(vbox)
 
 	var title := Label.new()
-	title.text                 = "⚙  SETTINGS"
+	title.text                 = "SETTINGS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 22)
 	vbox.add_child(title)
@@ -1270,27 +1284,44 @@ func _build_settings_overlay() -> Control:
 func _show_quit_confirm(settings_root: Node) -> void:
 	var vp    := get_viewport_rect().size
 	var cw    := minf(vp.x - 40.0, 300.0)
+
+	# Full-screen opaque overlay to block the settings behind
+	var overlay := Control.new()
+	overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	overlay.z_index      = 40
+	overlay.z_as_relative = false
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	var bg := ColorRect.new()
+	bg.color        = Color(0.0, 0.0, 0.0, 0.85)
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(bg)
+
 	var confirm := PanelContainer.new()
-	confirm.process_mode = Node.PROCESS_MODE_ALWAYS
-	confirm.z_index      = 40
-	confirm.z_as_relative = false
 	confirm.position = Vector2((vp.x - cw) * 0.5, vp.y * 0.35)
 	confirm.size     = Vector2(cw, 0)
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.12, 0.12, 0.18, 1.0)
+	panel_style.set_corner_radius_all(12)
+	panel_style.set_content_margin_all(20)
+	confirm.add_theme_stylebox_override("panel", panel_style)
+	overlay.add_child(confirm)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 16)
 	confirm.add_child(vbox)
 
 	var lbl := Label.new()
 	lbl.text                 = "Quit to main menu?\nYour run will be lost."
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 15)
+	lbl.add_theme_font_size_override("font_size", 16)
 	lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(lbl)
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 16)
 	vbox.add_child(row)
 
 	var yes_btn := Button.new()
@@ -1306,10 +1337,10 @@ func _show_quit_confirm(settings_root: Node) -> void:
 	var no_btn := Button.new()
 	no_btn.text = "Cancel"
 	no_btn.add_theme_font_size_override("font_size", 15)
-	no_btn.pressed.connect(confirm.queue_free)
+	no_btn.pressed.connect(overlay.queue_free)
 	row.add_child(no_btn)
 
-	settings_root.add_child(confirm)
+	settings_root.add_child(overlay)
 
 func _make_volume_row(label_text: String, on_change: Callable, initial: float) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -1327,6 +1358,15 @@ func _make_volume_row(label_text: String, on_change: Callable, initial: float) -
 	slider.value_changed.connect(on_change)
 	row.add_child(slider)
 	return row
+
+static func _styled_panel(panel: PanelContainer, padding: int = 16) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.10, 0.10, 0.16, 0.95)
+	style.set_corner_radius_all(14)
+	style.set_content_margin_all(padding)
+	style.border_color = Color(0.3, 0.35, 0.5, 0.3)
+	style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", style)
 
 func _fmt(n: int) -> String:
 	var s := str(n)
@@ -1372,35 +1412,46 @@ func _build_indicator_layer() -> void:
 	_indicator_layer.z_index      = 12
 	ui.add_child(_indicator_layer)
 	for _i in INDICATOR_POOL_SIZE:
-		var dot := ColorRect.new()
-		dot.size         = Vector2(14, 14)
-		dot.pivot_offset = Vector2(7, 7)
-		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		dot.visible      = false
-		_indicator_layer.add_child(dot)
-		_indicator_labels.append(dot)
-		# Scale pulse
-		var tw := dot.create_tween()
+		var arrow := _create_indicator_arrow()
+		_indicator_layer.add_child(arrow)
+		_indicator_nodes.append(arrow)
+		# Subtle alpha pulse
+		var tw := arrow.create_tween()
 		tw.set_loops()
-		tw.tween_property(dot, "scale", Vector2(1.7, 1.7), 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tw.tween_property(dot, "scale", Vector2(0.6, 0.6), 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		# Alpha glow pulse (offset phase)
-		var tw2 := dot.create_tween()
-		tw2.set_loops()
-		tw2.tween_property(dot, "modulate:a", 1.0, 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tw2.tween_property(dot, "modulate:a", 0.45, 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(arrow, "modulate:a", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(arrow, "modulate:a", 0.55, 0.5).set_trans(Tween.TRANS_SINE)
+
+func _create_indicator_arrow() -> Node2D:
+	# Small triangle arrow pointing right (rotated to face enemy direction)
+	var arrow := Node2D.new()
+	arrow.visible = false
+	arrow.set_meta("ind_color", Color.WHITE)
+	arrow.connect("draw", func() -> void:
+		var col: Color = arrow.get_meta("ind_color", Color.WHITE)
+		# Small triangle: 8px long, 6px wide
+		var pts := PackedVector2Array([
+			Vector2(5, 0),    # tip
+			Vector2(-3, -4),  # top-left
+			Vector2(-3, 4),   # bottom-left
+		])
+		arrow.draw_colored_polygon(pts, col)
+		# Glow outline
+		arrow.draw_polyline(PackedVector2Array([pts[1], pts[0], pts[2]]),
+			Color(col.r, col.g, col.b, 0.3), 2.0, true)
+	)
+	return arrow
 
 func _update_edge_indicators() -> void:
 	if not _indicator_layer:
 		return
-	for lbl in _indicator_labels:
-		lbl.visible = false
+	for node in _indicator_nodes:
+		node.visible = false
 	var canvas_xform := get_viewport().get_canvas_transform()
 	var vp           := get_viewport_rect().size
-	const MARGIN     := 22.0
+	const MARGIN     := 18.0
 	var slot := 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if slot >= _indicator_labels.size():
+		if slot >= _indicator_nodes.size():
 			break
 		if not is_instance_valid(enemy):
 			continue
@@ -1424,11 +1475,13 @@ func _update_edge_indicators() -> void:
 			col = Color(1.0, 0.75, 0.2)
 		else:
 			col = Color(1.0, 0.4, 0.4)
-		var dot      := _indicator_labels[slot] as ColorRect
-		dot.color    = col
-		dot.position = edge_pos - Vector2(5.0, 5.0)
-		dot.visible  = true
-		slot        += 1
+		var arrow := _indicator_nodes[slot] as Node2D
+		arrow.set_meta("ind_color", col)
+		arrow.position = edge_pos
+		arrow.rotation = dir.angle()
+		arrow.visible  = true
+		arrow.queue_redraw()
+		slot += 1
 
 # ── Tutorial Hints ────────────────────────────────────────────────────────────
 func _show_tutorial_hints() -> void:
@@ -1485,12 +1538,18 @@ func _toggle_pause() -> void:
 			pause_btn.text    = "▶"
 			if _pause_overlay:
 				_pause_overlay.visible = true
+			if _stats_btn:
+				_stats_btn.disabled = true
+				_stats_btn.modulate = Color(0.5, 0.5, 0.5, 0.6)
 		GameManager.State.PAUSED:
 			GameManager.state = GameManager.State.PLAYING
 			get_tree().paused = false
 			pause_btn.text    = "⏸"
 			if _pause_overlay:
 				_pause_overlay.visible = false
+			if _stats_btn:
+				_stats_btn.disabled = false
+				_stats_btn.modulate = Color.WHITE
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_pause"):

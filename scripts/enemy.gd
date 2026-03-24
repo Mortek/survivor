@@ -392,71 +392,116 @@ func _on_damage_area_body_entered(body: Node) -> void:
 
 ## Returns a distinct white-on-transparent shape texture for each enemy type.
 ## Colour is applied separately via sprite.modulate.
+## All shapes include inner details, glow edges, and layered depth.
 static func _shape_tex(type: int) -> ImageTexture:
 	match type:
-		Type.BASIC:    return _spiky_circle_tex(26)
-		Type.FAST:     return _arrowhead_tex(16, 24)
-		Type.TANK:     return _armored_hex_tex(34)
-		Type.BOSS:     return _star_shape_tex(26, 6)
-		Type.SPLITTER: return _triangle_tex(26)
-		Type.EXPLODER: return _bomb_tex(22)
-		Type.SHIELDER: return _hexagon_tex(28)
-		Type.HEALER:      return _cross_plus_tex(28)
-		Type.SWARM:       return _teardrop_tex(14)
-		Type.TELEPORTER:  return _ring_dot_tex(24, 4)
-		Type.CHARGER:     return _wedge_tex(14, 28)
-		_:                return _spiky_circle_tex(26)
+		Type.BASIC:    return _spiky_circle_tex(28)
+		Type.FAST:     return _lightning_bolt_tex(20, 28)
+		Type.TANK:     return _armored_hex_tex(36)
+		Type.BOSS:     return _star_shape_tex(30, 6)
+		Type.SPLITTER: return _split_diamond_tex(28)
+		Type.EXPLODER: return _bomb_tex(26)
+		Type.SHIELDER: return _shield_hex_tex(30)
+		Type.HEALER:      return _cross_plus_tex(30)
+		Type.SWARM:       return _swarm_orb_tex(16)
+		Type.TELEPORTER:  return _portal_tex(28)
+		Type.CHARGER:     return _ram_skull_tex(20, 30)
+		_:                return _spiky_circle_tex(28)
 
-## Spiked circle — base enemy
+## Spiked circle with glowing core — base enemy
 static func _spiky_circle_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx := (size - 1) * 0.5
 	var cy := (size - 1) * 0.5
 	var r_outer := size * 0.5 - 0.5
-	var r_inner := r_outer * 0.62
-	var spikes  := 8
+	var r_inner := r_outer * 0.58
+	var spikes  := 10
 	for y in size:
 		for x in size:
 			var dx := float(x) - cx
 			var dy := float(y) - cy
 			var d  := sqrt(dx * dx + dy * dy)
-			if d < 0.5:
-				img.set_pixel(x, y, Color.WHITE)
-				continue
 			var angle := atan2(dy, dx)
-			# Spike contribution: radius oscillates between inner and outer
 			var spike_angle := fmod(angle + TAU, TAU / float(spikes))
 			var t := absf(spike_angle - (TAU / float(spikes)) * 0.5) / (TAU / float(spikes) * 0.5)
-			var r_at_angle: float = lerpf(r_outer, r_inner, t * t * 0.45)
+			var r_at_angle: float = lerpf(r_outer, r_inner, t * t * 0.5)
 			if d <= r_at_angle:
-				img.set_pixel(x, y, Color.WHITE)
+				# Core glow: brighter center
+				var intensity := 1.0 - (d / r_at_angle) * 0.4
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= r_at_angle + 1.5:
+				# Soft outer glow
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.3))
+	# Inner eye/core
+	var eye_r := r_inner * 0.35
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var d := sqrt(dx * dx + dy * dy)
+			if d <= eye_r:
+				img.set_pixel(x, y, Color(0.4, 0.4, 0.4, 1.0))
 	return ImageTexture.create_from_image(img)
 
-## Arrowhead pointing up — fast enemy
-static func _arrowhead_tex(w: int, h: int) -> ImageTexture:
+## Lightning bolt shape — fast enemy (replaces arrow)
+static func _lightning_bolt_tex(w: int, h: int) -> ImageTexture:
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx := (w - 1) * 0.5
-	# Upper triangle (arrowhead)
-	var arrow_h := int(h * 0.6)
-	for y in arrow_h:
-		var t      := float(y) / float(arrow_h)
-		var half_w := t * cx
+	# Draw a zigzag lightning bolt shape
+	var segments: Array[Vector2] = [
+		Vector2(cx + 3.0, 0.0),          # top right
+		Vector2(cx - 2.0, h * 0.38),     # zag left
+		Vector2(cx + 4.0, h * 0.35),     # zig right
+		Vector2(cx - 1.0, h * 0.62),     # zag left
+		Vector2(cx + 3.0, h * 0.58),     # zig right
+		Vector2(cx, float(h - 1)),       # bottom point
+	]
+	# Fill bolt shape by drawing thick line segments
+	for y in h:
 		for x in w:
-			if absf(float(x) - cx) <= half_w:
-				img.set_pixel(x, y, Color.WHITE)
-	# Lower shaft
-	var shaft_w := int(w * 0.35)
-	var sx := int(cx - shaft_w * 0.5)
-	var ex := int(cx + shaft_w * 0.5)
-	for y in range(arrow_h, h):
-		for x in range(sx, ex + 1):
-			if x >= 0 and x < w:
-				img.set_pixel(x, y, Color.WHITE)
+			var px := float(x)
+			var py := float(y)
+			var on_bolt := false
+			for i in range(segments.size() - 1):
+				var a := segments[i]
+				var b := segments[i + 1]
+				if py >= minf(a.y, b.y) - 1.0 and py <= maxf(a.y, b.y) + 1.0:
+					var t_seg := clampf((py - a.y) / maxf(b.y - a.y, 0.001), 0.0, 1.0)
+					var center_x := a.x + (b.x - a.x) * t_seg
+					var bolt_width := 3.5 - (float(i) * 0.25)
+					if absf(px - center_x) <= bolt_width:
+						on_bolt = true
+						break
+			if on_bolt:
+				# Brighter core
+				var ny := float(y) / float(h - 1)
+				var dist_from_center := absf(float(x) - cx) / (w * 0.5)
+				var intensity := 1.0 - dist_from_center * 0.2
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+	# Add glow around the bolt
+	var base := img.duplicate()
+	for y in h:
+		for x in w:
+			if img.get_pixel(x, y).a < 0.1:
+				# Check neighbors for glow
+				var near := false
+				for dy in range(-2, 3):
+					for dx in range(-2, 3):
+						var nx := x + dx
+						var ny := y + dy
+						if nx >= 0 and nx < w and ny >= 0 and ny < h:
+							if base.get_pixel(nx, ny).a > 0.5:
+								near = true
+								break
+					if near:
+						break
+				if near:
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.2))
 	return ImageTexture.create_from_image(img)
 
-## Armored hexagon (hex with inner ring) — tank
+## Armored hexagon with inner plates — tank
 static func _armored_hex_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
@@ -471,188 +516,131 @@ static func _armored_hex_tex(size: int) -> ImageTexture:
 			var hex_r := r * cos(fmod(absf(angle) + PI / 6.0, PI / 3.0) - PI / 6.0)
 			var d := sqrt(dx * dx + dy * dy)
 			if d <= hex_r:
-				# Fill body, but leave inner cutout ring for armor look
-				var inner := hex_r * 0.55
-				if d > inner * 0.65 or d <= inner * 0.3:
-					img.set_pixel(x, y, Color.WHITE)
+				var inner := hex_r * 0.50
+				var plate := hex_r * 0.75
+				if d > plate:
+					# Outer armor rim
+					img.set_pixel(x, y, Color(0.85, 0.85, 0.85, 1.0))
+				elif d > inner:
+					# Middle plate
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0))
+				elif d > inner * 0.4:
+					# Inner ring gap
+					img.set_pixel(x, y, Color(0.5, 0.5, 0.5, 1.0))
+				else:
+					# Core
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 1.0))
+			elif d <= hex_r + 1.5:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.2))
 	return ImageTexture.create_from_image(img)
 
-## 6-pointed star — boss
+## 6-pointed star with inner glow — boss
 static func _star_shape_tex(size: int, points: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx      := (size - 1) * 0.5
 	var cy      := (size - 1) * 0.5
 	var r_outer := size * 0.5 - 0.5
-	var r_inner := r_outer * 0.42
+	var r_inner := r_outer * 0.40
 	for y in size:
 		for x in size:
 			var dx    := float(x) - cx
 			var dy    := float(y) - cy
 			var d     := sqrt(dx * dx + dy * dy)
 			var angle := atan2(dy, dx)
-			# Interpolate radius between inner and outer based on angle
 			var sector_angle := TAU / float(points)
 			var a_mod := fmod(angle + TAU + sector_angle * 0.5, sector_angle) - sector_angle * 0.5
 			var t     := absf(a_mod) / (sector_angle * 0.5)
 			var r_star: float = lerpf(r_outer, r_inner, t)
 			if d <= r_star:
-				img.set_pixel(x, y, Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-## Bomb cross with rounded tips — exploder
-static func _bomb_tex(size: int) -> ImageTexture:
-	var img       := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	var half      := size >> 1
-	var thickness := maxi(int(size / 4.0), 2)
-	var tip_r     := float(thickness) * 0.9
-	for y in size:
-		for x in size:
-			var dx: int = abs(x - half)
-			var dy: int = abs(y - half)
-			if dx <= thickness or dy <= thickness:
-				img.set_pixel(x, y, Color.WHITE)
-			# Round tips
-			for tip in [[half, 1], [half, size-2], [1, half], [size-2, half]]:
-				var tdx := float(x) - float(tip[0])
-				var tdy := float(y) - float(tip[1])
-				if sqrt(tdx*tdx + tdy*tdy) <= tip_r:
-					img.set_pixel(x, y, Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-## Medical cross (healer) — wider plus arms
-static func _cross_plus_tex(size: int) -> ImageTexture:
-	var img     := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	var cx      := int((size - 1) / 2)
-	var arm_w   := maxi(int(size * 0.28), 3)
-	var arm_len := int(size * 0.42)
-	# Horizontal arm
-	for y in range(cx - arm_w, cx + arm_w + 1):
-		for x in range(cx - arm_len, cx + arm_len + 1):
-			if x >= 0 and x < size and y >= 0 and y < size:
-				img.set_pixel(x, y, Color.WHITE)
-	# Vertical arm
-	for x in range(cx - arm_w, cx + arm_w + 1):
-		for y in range(cx - arm_len, cx + arm_len + 1):
-			if x >= 0 and x < size and y >= 0 and y < size:
-				img.set_pixel(x, y, Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-## Teardrop pointing down — swarm enemy
-static func _teardrop_tex(size: int) -> ImageTexture:
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	var cx := (size - 1) * 0.5
-	# Upper circle
-	var circle_r := size * 0.38
-	var circle_cy := size * 0.40
-	for y in size:
-		for x in size:
-			var dx := float(x) - cx
-			var dy := float(y) - circle_cy
-			if dx*dx + dy*dy <= circle_r * circle_r:
-				img.set_pixel(x, y, Color.WHITE)
-	# Lower pointed tail
-	var tail_start := int(circle_cy + circle_r * 0.7)
-	for y in range(tail_start, size):
-		var t      := float(y - tail_start) / maxf(float(size - 1 - tail_start), 1.0)
-		var half_w := (1.0 - t) * circle_r * 0.55
-		for x in range(int(cx - half_w), int(cx + half_w) + 1):
-			if x >= 0 and x < size:
-				img.set_pixel(x, y, Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-## Ring with center dot — teleporter
-static func _ring_dot_tex(size: int, thickness: int) -> ImageTexture:
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	var cx      := (size - 1) * 0.5
-	var cy      := (size - 1) * 0.5
-	var r_outer := size * 0.5 - 0.5
-	var r_inner := r_outer - float(thickness)
-	var dot_r   := r_inner * 0.28
+				var intensity := 1.0 - (d / r_star) * 0.3
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= r_star + 2.0:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.25))
+	# Central core circle
+	var core_r := r_inner * 0.55
 	for y in size:
 		for x in size:
 			var dx := float(x) - cx
 			var dy := float(y) - cy
-			var d2 := dx * dx + dy * dy
-			if d2 <= r_outer * r_outer and d2 >= r_inner * r_inner:
-				img.set_pixel(x, y, Color.WHITE)
-			elif d2 <= dot_r * dot_r:
-				img.set_pixel(x, y, Color.WHITE)
+			if sqrt(dx * dx + dy * dy) <= core_r:
+				img.set_pixel(x, y, Color(0.6, 0.6, 0.6, 1.0))
 	return ImageTexture.create_from_image(img)
 
-## Aggressive wedge/arrowhead pointing down — charger
-static func _wedge_tex(w: int, h: int) -> ImageTexture:
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+## Bomb with fuse and inner glow — exploder
+static func _bomb_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
-	var cx := (w - 1) * 0.5
-	# Wide top, narrow bottom (aggressive wedge)
-	for y in h:
-		var t      := float(y) / maxf(float(h - 1), 1.0)
-		var half_w := (1.0 - t * 0.85) * cx
-		for x in w:
-			if absf(float(x) - cx) <= half_w:
-				img.set_pixel(x, y, Color.WHITE)
+	var cx := (size - 1) * 0.5
+	var cy := (size - 1) * 0.5 + 2.0
+	var r  := size * 0.38
+	# Main bomb body (circle)
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var d := sqrt(dx * dx + dy * dy)
+			if d <= r:
+				var intensity := 1.0 - (d / r) * 0.25
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= r + 1.5:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.3))
+	# Fuse on top
+	var fuse_x := int(cx + 2)
+	for fy in range(0, int(cy - r) + 3):
+		if fuse_x >= 0 and fuse_x < size and fy >= 0 and fy < size:
+			img.set_pixel(fuse_x, fy, Color.WHITE)
+			if fuse_x + 1 < size:
+				img.set_pixel(fuse_x + 1, fy, Color(1.0, 1.0, 1.0, 0.5))
+	# Spark at top of fuse
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var sx := fuse_x + dx
+			var sy := dy + 1
+			if sx >= 0 and sx < size and sy >= 0 and sy < size:
+				var sd := sqrt(float(dx * dx + dy * dy))
+				if sd <= 2.5:
+					img.set_pixel(sx, sy, Color(1.0, 1.0, 1.0, 1.0 - sd * 0.3))
+	# Inner highlight
+	var hl_r := r * 0.3
+	var hl_cx := cx - r * 0.2
+	var hl_cy := cy - r * 0.2
+	for y in size:
+		for x in size:
+			var dx := float(x) - hl_cx
+			var dy := float(y) - hl_cy
+			if sqrt(dx * dx + dy * dy) <= hl_r:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.5))
 	return ImageTexture.create_from_image(img)
 
-static func _ring_tex(size: int, thickness: int) -> ImageTexture:
-	return _ring_dot_tex(size, thickness)
-
-static func _circle_tex(size: int) -> ImageTexture:
+## Split diamond with crack line — splitter
+static func _split_diamond_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx := (size - 1) * 0.5
 	var cy := (size - 1) * 0.5
-	var r2 := (size * 0.5 - 0.5) * (size * 0.5 - 0.5)
 	for y in size:
 		for x in size:
-			var dx := x - cx
-			var dy := y - cy
-			if dx * dx + dy * dy <= r2:
-				img.set_pixel(x, y, Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-static func _diamond_tex(w: int, h: int) -> ImageTexture:
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	var cx := (w - 1) * 0.5
-	var cy := (h - 1) * 0.5
-	for y in h:
-		for x in w:
-			var nx := absf(x - cx) / (cx + 0.001)
-			var ny := absf(y - cy) / (cy + 0.001)
-			if nx + ny <= 1.0:
-				img.set_pixel(x, y, Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-static func _triangle_tex(size: int) -> ImageTexture:
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
+			var nx := absf(float(x) - cx) / (cx + 0.001)
+			var ny := absf(float(y) - cy) / (cy + 0.001)
+			var d := nx + ny
+			if d <= 1.0:
+				var intensity := 1.0 - d * 0.3
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= 1.12:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.25))
+	# Crack line down the middle
 	for y in size:
-		var t      := float(y) / maxf(size - 1, 1)
-		var half_w := t * (size * 0.5)
-		var xs     := int(size * 0.5 - half_w)
-		var xe     := int(size * 0.5 + half_w)
-		for x in range(xs, xe + 1):
-			if x >= 0 and x < size:
-				img.set_pixel(x, y, Color.WHITE)
+		var crack_x := int(cx + sin(float(y) * 0.6) * 1.5)
+		if crack_x >= 0 and crack_x < size:
+			var nx := absf(float(crack_x) - cx) / (cx + 0.001)
+			var ny := absf(float(y) - cy) / (cy + 0.001)
+			if nx + ny <= 0.95:
+				img.set_pixel(crack_x, y, Color(0.3, 0.3, 0.3, 1.0))
 	return ImageTexture.create_from_image(img)
 
-static func _cross_tex(size: int) -> ImageTexture:
-	var img       := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	var half      := size >> 1
-	var thickness := maxi(int(size / 5.0), 2)
-	for y in size:
-		for x in size:
-			if abs(y - half) <= thickness or abs(x - half) <= thickness:
-				img.set_pixel(x, y, Color.WHITE)
-	return ImageTexture.create_from_image(img)
-
-static func _hexagon_tex(size: int) -> ImageTexture:
+## Shield hexagon with barrier lines — shielder
+static func _shield_hex_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx := (size - 1) * 0.5
@@ -660,24 +648,159 @@ static func _hexagon_tex(size: int) -> ImageTexture:
 	var r  := size * 0.5 - 0.5
 	for y in size:
 		for x in size:
-			var dx := x - cx
-			var dy := y - cy
+			var dx := float(x) - cx
+			var dy := float(y) - cy
 			var angle := atan2(dy, dx)
 			var hex_r := r * cos(fmod(absf(angle) + PI / 6.0, PI / 3.0) - PI / 6.0)
-			if sqrt(dx * dx + dy * dy) <= hex_r:
-				img.set_pixel(x, y, Color.WHITE)
+			var d := sqrt(dx * dx + dy * dy)
+			if d <= hex_r:
+				var intensity := 0.8 + (1.0 - d / hex_r) * 0.2
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+				# Inner barrier ring
+				var ring_d := absf(d - hex_r * 0.65)
+				if ring_d < 1.5:
+					img.set_pixel(x, y, Color(0.5, 0.5, 0.5, 1.0))
+			elif d <= hex_r + 2.0:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.2))
 	return ImageTexture.create_from_image(img)
 
-static func _star_tex(size: int) -> ImageTexture:
+## Medical cross with heart center — healer
+static func _cross_plus_tex(size: int) -> ImageTexture:
+	var img     := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx      := int((size - 1) / 2)
+	var arm_w   := maxi(int(size * 0.26), 3)
+	var arm_len := int(size * 0.44)
+	# Horizontal arm
+	for y in range(cx - arm_w, cx + arm_w + 1):
+		for x in range(cx - arm_len, cx + arm_len + 1):
+			if x >= 0 and x < size and y >= 0 and y < size:
+				var dist := maxf(absf(float(x) - float(cx)), absf(float(y) - float(cx)))
+				var intensity := 1.0 - (dist / float(arm_len)) * 0.2
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+	# Vertical arm
+	for x in range(cx - arm_w, cx + arm_w + 1):
+		for y in range(cx - arm_len, cx + arm_len + 1):
+			if x >= 0 and x < size and y >= 0 and y < size:
+				var dist := maxf(absf(float(x) - float(cx)), absf(float(y) - float(cx)))
+				var intensity := 1.0 - (dist / float(arm_len)) * 0.2
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+	# Glow outline
+	var base := img.duplicate()
+	for y in size:
+		for x in size:
+			if img.get_pixel(x, y).a < 0.1:
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						var nx := x + dx
+						var ny := y + dy
+						if nx >= 0 and nx < size and ny >= 0 and ny < size:
+							if base.get_pixel(nx, ny).a > 0.5:
+								img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.25))
+	return ImageTexture.create_from_image(img)
+
+## Glowing orb with inner swirl — swarm
+static func _swarm_orb_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx := (size - 1) * 0.5
 	var cy := (size - 1) * 0.5
-	var thick := maxi(int(size / 5.0), 2)
+	var r := size * 0.5 - 0.5
 	for y in size:
 		for x in size:
-			var dx: int = abs(x - int(cx))
-			var dy: int = abs(y - int(cy))
-			if dx <= thick or dy <= thick:
-				img.set_pixel(x, y, Color.WHITE)
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var d := sqrt(dx * dx + dy * dy)
+			if d <= r:
+				var intensity := 1.0 - (d / r) * 0.5
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= r + 1.5:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.3))
+	# Inner bright spot
+	var spot_r := r * 0.3
+	for y in size:
+		for x in size:
+			var dx := float(x) - (cx - 1.0)
+			var dy := float(y) - (cy - 1.0)
+			if sqrt(dx * dx + dy * dy) <= spot_r:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.6))
+	return ImageTexture.create_from_image(img)
+
+## Portal ring with energy center — teleporter
+static func _portal_tex(size: int) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx      := (size - 1) * 0.5
+	var cy      := (size - 1) * 0.5
+	var r_outer := size * 0.5 - 0.5
+	var r_inner := r_outer * 0.55
+	var dot_r   := r_inner * 0.4
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var d  := sqrt(dx * dx + dy * dy)
+			# Outer ring with gradient
+			if d <= r_outer and d >= r_inner:
+				var ring_t := (d - r_inner) / (r_outer - r_inner)
+				var intensity := 0.7 + ring_t * 0.3
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+			elif d <= r_outer + 1.5 and d > r_outer:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.2))
+			# Center energy
+			elif d <= dot_r:
+				var ci := 1.0 - (d / dot_r) * 0.3
+				img.set_pixel(x, y, Color(ci, ci, ci, 1.0))
+			# Inner ring glow
+			elif d < r_inner and d > r_inner - 1.5:
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.3))
+	return ImageTexture.create_from_image(img)
+
+## Ram skull shape — charger
+static func _ram_skull_tex(w: int, h: int) -> ImageTexture:
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := (w - 1) * 0.5
+	# Body: wide top tapering to point (aggressive wedge)
+	for y in h:
+		var t      := float(y) / maxf(float(h - 1), 1.0)
+		var half_w := (1.0 - t * 0.85) * cx
+		for x in w:
+			if absf(float(x) - cx) <= half_w:
+				var intensity := 1.0 - t * 0.25
+				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+	# Horn bumps on top
+	var horn_sides: Array[float] = [-1.0, 1.0]
+	for side in horn_sides:
+		var horn_cx := cx + side * (cx * 0.5)
+		for y in range(0, int(h * 0.25)):
+			for x in w:
+				var hdx := float(x) - horn_cx
+				var hdy := float(y) - 2.0
+				if sqrt(hdx * hdx + hdy * hdy) <= 3.5:
+					if x >= 0 and x < w:
+						img.set_pixel(x, y, Color.WHITE)
+	# Eye slits
+	var eye_y := int(h * 0.2)
+	var eye_sides: Array[float] = [-1.0, 1.0]
+	for side in eye_sides:
+		var eye_x := int(cx + side * 3.0)
+		for dy in range(-1, 2):
+			for dx in range(-1, 1):
+				var px := eye_x + dx
+				var py := eye_y + dy
+				if px >= 0 and px < w and py >= 0 and py < h:
+					img.set_pixel(px, py, Color(0.3, 0.3, 0.3, 1.0))
+	# Glow outline
+	var base := img.duplicate()
+	for y in h:
+		for x in w:
+			if img.get_pixel(x, y).a < 0.1:
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						var nx := x + dx
+						var ny := y + dy
+						if nx >= 0 and nx < w and ny >= 0 and ny < h:
+							if base.get_pixel(nx, ny).a > 0.5:
+								img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.2))
 	return ImageTexture.create_from_image(img)

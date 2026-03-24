@@ -29,6 +29,13 @@ func _build_panel() -> void:
 	var ph  := vp.y - 40.0
 
 	var panel := PanelContainer.new()
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.10, 0.10, 0.16, 0.95)
+	panel_style.set_corner_radius_all(14)
+	panel_style.set_content_margin_all(16)
+	panel_style.border_color = Color(0.3, 0.35, 0.5, 0.3)
+	panel_style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", panel_style)
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	add_child(panel)

@@ -166,7 +166,7 @@ func _build_ui() -> void:
 
 	# ── Tip ─────────────────────────────────────────────────────────────────────
 	var tip := Label.new()
-	tip.text                 = "Tip: Reach evolution conditions to unlock\nDeath Orbit or Thunder God!\nCollect Magnet Orbs to pull in all XP at once."
+	tip.text                 = "Tip: Reach evolution conditions to unlock\nThunder God! Collect Magnet Orbs to pull in all XP."
 	tip.add_theme_font_size_override("font_size", 13)
 	tip.modulate             = Color(0.55, 0.55, 0.65)
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -215,6 +215,13 @@ func _build_settings_overlay() -> Control:
 	var pw := 360.0
 	var ph := 260.0
 	var panel := PanelContainer.new()
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.10, 0.10, 0.16, 0.95)
+	panel_style.set_corner_radius_all(14)
+	panel_style.set_content_margin_all(20)
+	panel_style.border_color = Color(0.3, 0.35, 0.5, 0.3)
+	panel_style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", panel_style)
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	root.add_child(panel)
@@ -224,7 +231,7 @@ func _build_settings_overlay() -> Control:
 	panel.add_child(vbox)
 
 	var title := Label.new()
-	title.text                 = "⚙  SETTINGS"
+	title.text                 = "SETTINGS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 22)
 	vbox.add_child(title)
@@ -309,35 +316,53 @@ func _build_challenge_popup(curse_name: String) -> Control:
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	root.add_child(bg)
 
-	var pw := 360.0
-	var ph := 370.0
+	var pw := 380.0
 	var panel := PanelContainer.new()
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.10, 0.10, 0.16, 0.95)
+	panel_style.set_corner_radius_all(14)
+	panel_style.set_content_margin_all(22)
+	panel_style.border_color = Color(0.3, 0.35, 0.5, 0.3)
+	panel_style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", panel_style)
+	var ph := 380.0
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	root.add_child(panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 10)
+	vbox.add_theme_constant_override("separation", 14)
 	panel.add_child(vbox)
 
 	var title := Label.new()
 	title.text                 = "DAILY CHALLENGE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_font_size_override("font_size", 22)
 	title.modulate             = Color(1.0, 0.9, 0.2)
 	vbox.add_child(title)
 
 	vbox.add_child(HSeparator.new())
 
-	# Curse name
+	# Curse name in styled card
+	var curse_card := PanelContainer.new()
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = Color(0.15, 0.12, 0.08, 0.8)
+	card_style.set_corner_radius_all(10)
+	card_style.set_content_margin_all(14)
+	curse_card.add_theme_stylebox_override("panel", card_style)
+	vbox.add_child(curse_card)
+
+	var curse_info := VBoxContainer.new()
+	curse_info.add_theme_constant_override("separation", 8)
+	curse_card.add_child(curse_info)
+
 	var name_lbl := Label.new()
 	name_lbl.text                 = curse_name
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.add_theme_font_size_override("font_size", 18)
+	name_lbl.add_theme_font_size_override("font_size", 20)
 	name_lbl.modulate             = Color(1.0, 0.45, 0.1)
-	vbox.add_child(name_lbl)
+	curse_info.add_child(name_lbl)
 
-	# Penalty description
 	if not curse_data.is_empty():
 		var effect_lbl := Label.new()
 		effect_lbl.text                 = curse_data.get("desc", "")
@@ -345,43 +370,35 @@ func _build_challenge_popup(curse_name: String) -> Control:
 		effect_lbl.add_theme_font_size_override("font_size", 14)
 		effect_lbl.modulate             = Color(0.9, 0.9, 0.9)
 		effect_lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-		vbox.add_child(effect_lbl)
+		curse_info.add_child(effect_lbl)
 
-		# Reward
+		curse_info.add_child(HSeparator.new())
+
 		var reward_lbl := Label.new()
 		reward_lbl.text                 = "Reward: " + curse_data.get("reward", "")
 		reward_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		reward_lbl.add_theme_font_size_override("font_size", 14)
+		reward_lbl.add_theme_font_size_override("font_size", 15)
 		reward_lbl.modulate             = Color(0.3, 1.0, 0.5)
 		reward_lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-		vbox.add_child(reward_lbl)
-
-	var sub := Label.new()
-	sub.text                 = "This curse is applied from the start of the run.\nGoal: survive as long as possible — reach Wave 10 to prove yourself, Wave 20 to master it.\nEach wave lasts 30 seconds."
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 12)
-	sub.modulate             = Color(0.6, 0.6, 0.6)
-	sub.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(sub)
+		curse_info.add_child(reward_lbl)
 
 	vbox.add_child(HSeparator.new())
 
-	# X close button — top right of panel
-	var close_x := Button.new()
-	close_x.text = "✕"
-	close_x.add_theme_font_size_override("font_size", 16)
-	close_x.custom_minimum_size = Vector2(32, 28)
-	close_x.position = Vector2(panel.position.x + pw - 36.0, panel.position.y + 4.0)
-	close_x.pressed.connect(root.queue_free)
-	root.add_child(close_x)
+	var sub := Label.new()
+	sub.text                 = "Curse is active from run start.\nWave 10 to prove yourself, Wave 20 to master it."
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.modulate             = Color(0.55, 0.55, 0.65)
+	sub.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(sub)
 
 	var btn_row := HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	btn_row.add_theme_constant_override("separation", 12)
+	btn_row.add_theme_constant_override("separation", 16)
 	vbox.add_child(btn_row)
 
 	var play_btn := Button.new()
-	play_btn.text = "▶  PLAY CHALLENGE"
+	play_btn.text = "PLAY CHALLENGE"
 	play_btn.add_theme_font_size_override("font_size", 18)
 	play_btn.pressed.connect(func() -> void:
 		GameManager.daily_challenge_active = true
@@ -389,6 +406,15 @@ func _build_challenge_popup(curse_name: String) -> Control:
 		get_tree().change_scene_to_file("res://scenes/game.tscn")
 	)
 	btn_row.add_child(play_btn)
+
+	# X close button — top right of panel
+	var close_x := Button.new()
+	close_x.text = "✕"
+	close_x.add_theme_font_size_override("font_size", 16)
+	close_x.custom_minimum_size = Vector2(32, 28)
+	close_x.position = Vector2(panel.position.x + pw - 40.0, panel.position.y + 6.0)
+	close_x.pressed.connect(root.queue_free)
+	root.add_child(close_x)
 
 	return root
 
