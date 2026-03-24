@@ -38,6 +38,7 @@ var _active_curses:  Array  = []
 var _achieved:       Dictionary = {}
 var total_crits: int = 0
 var _corruption_counter: int = 0
+var desired_time_scale: float = 1.0
 
 # ── Player Stats ──────────────────────────────────────────────────────────────
 var stats: Dictionary = {

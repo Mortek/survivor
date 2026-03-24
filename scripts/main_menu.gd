@@ -204,7 +204,7 @@ func _build_settings_overlay() -> Control:
 	root.add_child(bg)
 
 	var pw := 360.0
-	var ph := 210.0
+	var ph := 170.0
 	var panel := PanelContainer.new()
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.10, 0.10, 0.16, 0.95)

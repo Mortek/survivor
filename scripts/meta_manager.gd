@@ -261,6 +261,24 @@ func purchase_upgrade(id: String, cost: int) -> bool:
 	_save()
 	return true
 
+func reset_all_upgrades() -> void:
+	# Refund all coins spent on upgrades
+	var upg_map: Dictionary = {}
+	for upg in PERMANENT_UPGRADES:
+		upg_map[upg["id"]] = upg
+	var refund := 0
+	for id in permanent_upgrades:
+		var lvl: int = permanent_upgrades[id]
+		if lvl <= 0 or not upg_map.has(id):
+			continue
+		var base: int = int(upg_map[id]["base_cost"])
+		var scale: int = int(upg_map[id]["cost_scale"])
+		for i in range(lvl):
+			refund += base + (i * i) * scale
+	total_coins += refund
+	permanent_upgrades.clear()
+	_save()
+
 ## Apply all permanent upgrade bonuses to a stats dict (called at run start).
 func apply_to_stats(stats: Dictionary) -> void:
 	var lvl: int

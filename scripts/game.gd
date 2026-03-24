@@ -284,6 +284,7 @@ func _position_speed_btn() -> void:
 func _on_speed_pressed() -> void:
 	_speed_index      = (_speed_index + 1) % _SPEEDS.size()
 	Engine.time_scale = float(_SPEEDS[_speed_index])
+	GameManager.desired_time_scale = Engine.time_scale
 	_speed_btn.text   = str(_SPEEDS[_speed_index]) + "x"
 
 # ── Extra Game-Over Labels ────────────────────────────────────────────────────
@@ -826,16 +827,8 @@ func _on_upgrade_available_flash(_choices) -> void:
 	if _audio:
 		_audio.play_any("levelup")
 
-func _do_flash(color: Color, duration: float) -> void:
-	if not _level_flash:
-		return
-	if _flash_tween and _flash_tween.is_running():
-		_flash_tween.kill()
-	_level_flash.size    = get_viewport().get_visible_rect().size
-	_level_flash.color   = color
-	_level_flash.color.a = clampf(color.a, 0.0, 0.6)
-	_flash_tween = create_tween()
-	_flash_tween.tween_property(_level_flash, "color:a", 0.0, duration)
+func _do_flash(_color: Color, _duration: float) -> void:
+	return
 
 # ── FX Spawning ───────────────────────────────────────────────────────────────
 func _chain_explode(pos: Vector2, dmg: float) -> void:
@@ -1009,8 +1002,8 @@ var _settings_btn_ref: Button = null
 func _build_stats_button() -> void:
 	var btn := Button.new()
 	btn.text = "📊"
-	btn.add_theme_font_size_override("font_size", 16)
-	btn.custom_minimum_size = Vector2(36, 26)
+	btn.add_theme_font_size_override("font_size", 20)
+	btn.custom_minimum_size = Vector2(48, 26)
 	btn.process_mode   = Node.PROCESS_MODE_ALWAYS
 	btn.z_index        = 35
 	btn.z_as_relative  = false
@@ -1021,7 +1014,7 @@ func _build_stats_button() -> void:
 
 func _position_stats_btn(btn: Button) -> void:
 	var vp := get_viewport_rect().size
-	btn.position = Vector2(vp.x - 146.0, 26.0)
+	btn.position = Vector2(vp.x - 162.0, 26.0)
 
 func _close_stats_popup() -> void:
 	if _stats_popup:

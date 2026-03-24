@@ -394,7 +394,7 @@ func _die() -> void:
 	if enemy_type != Type.SWARM and enemy_type != Type.BOSS:
 		Engine.time_scale = 0.35
 		get_tree().create_timer(0.06, true, false, true).timeout.connect(
-			func() -> void: if Engine.time_scale < 0.9: Engine.time_scale = 1.0
+			func() -> void: if Engine.time_scale < 0.9: Engine.time_scale = GameManager.desired_time_scale
 		)
 	died.emit(global_position, xp_value, _base_color, int(enemy_type), _last_hit_dir)
 	if enemy_type == Type.SPLITTER:

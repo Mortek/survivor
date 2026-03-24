@@ -114,6 +114,24 @@ func _build_panel() -> void:
 	)
 	bottom_row.add_child(dev_btn)
 
+	# Revert all upgrades button
+	var revert_btn := Button.new()
+	revert_btn.text = "🔄 REVERT ALL"
+	revert_btn.add_theme_font_size_override("font_size", 14)
+	revert_btn.modulate = Color(1.0, 0.4, 0.4)
+	revert_btn.pressed.connect(func() -> void:
+		MetaManager.reset_all_upgrades()
+		_refresh_coins_label(coins_lbl)
+		_refresh_all_buttons()
+		# Refresh all info labels too
+		for pair in _buy_buttons:
+			var btn: Button = pair[0]
+			var upg: Dictionary = pair[1]
+			var info_lbl: Label = btn.get_parent().get_child(0)
+			_refresh_info_label(info_lbl, upg)
+	)
+	bottom_row.add_child(revert_btn)
+
 	# X close button — added to the main Control (self), positioned at top-right of panel
 	var close_x := Button.new()
 	close_x.text = "✕"
