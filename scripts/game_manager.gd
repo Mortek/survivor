@@ -31,6 +31,7 @@ var coin_count:     int   = 0
 var kills:          int   = 0
 var coins_this_run: int   = 0
 var combo_count:    int   = 0
+var max_combo:      int   = 0
 var _combo_timer:   float = 0.0
 const COMBO_WINDOW          := 2.5
 var _active_curses:  Array  = []
@@ -55,9 +56,6 @@ var stats: Dictionary = {
 	"armor":              0,
 	"lifesteal":          0.0,
 	"regen":              0.0,
-	# Melee
-	"melee_enabled":      false,
-	"melee_level":        1,
 	# Boomerang
 	"boomerang_enabled":  false,
 	"boomerang_level":    1,
@@ -69,7 +67,6 @@ var stats: Dictionary = {
 	"synergy_aura":       false,
 	"enemy_speed_mult":   1.0,
 	# Evolution flags
-	"crimson_reaper":     false,
 	"death_orbit":        false,
 	"thunder_god":        false,
 	# New mechanics
@@ -90,8 +87,9 @@ var stats: Dictionary = {
 	"elite_dmg_bonus":    0.0,   # bonus damage multiplier vs elite enemies
 	"lucky_drop_chance":  0.0,   # bonus coin drop chance
 }
-var _default_stats:    Dictionary
-var _upgrade_title:    String = ""
+var _default_stats:       Dictionary
+var _upgrade_title:       String = ""
+var _taken_upgrade_ids:   Dictionary = {}  # id -> true for this run
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
@@ -155,6 +153,9 @@ func _pick_upgrades(n: int) -> Array:
 	return pool.slice(0, min(n, pool.size()))
 
 func apply_upgrade(upgrade: Dictionary) -> void:
+	var uid: String = upgrade.get("id", "")
+	if not uid.is_empty():
+		_taken_upgrade_ids[uid] = true
 	upgrade["apply"].call()
 	state = State.PLAYING
 	get_tree().paused = false
@@ -184,6 +185,7 @@ func add_kill() -> void:
 	kills_changed.emit(kills)
 	# Combo
 	combo_count  += 1
+	max_combo     = maxi(max_combo, combo_count)
 	_combo_timer  = 0.0
 	combo_updated.emit(combo_count)
 	_check_achievements()
@@ -238,12 +240,10 @@ func _check_achievements() -> void:
 	_try_achieve("level10",     "Unstoppable",     current_level >= 10)
 	_try_achieve("combo10",     "Combo King!",     combo_count >= 10)
 	_try_achieve("evolution",   "Evolved!",
-		stats.get("crimson_reaper", false) or
 		stats.get("death_orbit",    false) or
 		stats.get("thunder_god",    false)
 	)
 	_try_achieve("triple_tree", "Triple Threat",
-		stats.get("melee_enabled", false) and
 		stats.get("boomerang_enabled", false) and
 		stats.get("lightning_enabled", false)
 	)
@@ -280,12 +280,17 @@ func reset() -> void:
 	kills          = 0
 	coins_this_run = 0
 	combo_count         = 0
+	max_combo           = 0
 	total_crits         = 0
 	_corruption_counter = 0
+	_taken_upgrade_ids  = {}
 	_combo_timer   = 0.0
 	_active_curses = []
 	stats          = _default_stats.duplicate(true)
 	get_tree().paused = false
+
+func is_upgrade_taken(id: String) -> bool:
+	return _taken_upgrade_ids.has(id)
 
 func get_time_string() -> String:
 	var total: int = int(survival_time)
@@ -464,28 +469,6 @@ var _upgrade_pool: Array = [
 		"desc":      "+1 Shield Charge\nAbsorbs one hit",
 		"apply":     func() -> void: stats["shield_charges"] += 1,
 	},
-	# ── Melee tree ─────────────────────────────────────────────────────────────
-	{
-		"id":        "melee_unlock",
-		"name":      "Blade Arts",
-		"desc":      "UNLOCK: Melee Sweep\nDamages all nearby enemies",
-		"condition": func() -> bool: return not stats.get("melee_enabled", false),
-		"apply":     func() -> void: stats["melee_enabled"] = true,
-	},
-	{
-		"id":        "melee_lvl2",
-		"name":      "Blade Mastery",
-		"desc":      "Melee: +50% Damage\nFaster swing",
-		"condition": func() -> bool: return stats.get("melee_enabled", false) and stats.get("melee_level", 1) == 1,
-		"apply":     func() -> void: stats["melee_level"] = 2,
-	},
-	{
-		"id":        "melee_lvl3",
-		"name":      "Blade Mastery II",
-		"desc":      "Melee: +100% Damage\nWider range",
-		"condition": func() -> bool: return stats.get("melee_level", 1) == 2,
-		"apply":     func() -> void: stats["melee_level"] = 3,
-	},
 	# ── Boomerang tree ─────────────────────────────────────────────────────────
 	{
 		"id":        "boomerang_unlock",
@@ -539,14 +522,6 @@ var _upgrade_pool: Array = [
 	},
 	# ── Evolutions ─────────────────────────────────────────────────────────────
 	{
-		"id":        "crimson_reaper",
-		"name":      "★ Crimson Reaper",
-		"desc":      "EVOLUTION\nMelee gains lifesteal\n+150% Melee Damage",
-		"condition": func() -> bool:
-			return stats.get("melee_level", 1) >= 3 and stats.get("lifesteal", 0.0) >= 5.0 and not stats.get("crimson_reaper", false),
-		"apply":     func() -> void: stats["crimson_reaper"] = true,
-	},
-	{
 		"id":        "death_orbit",
 		"name":      "★ Death Orbit",
 		"desc":      "EVOLUTION\nTriple boomerang\n+200% Orbital Damage",
@@ -562,26 +537,12 @@ var _upgrade_pool: Array = [
 			return stats.get("lightning_level", 1) >= 4 and stats.get("armor", 0) >= 6 and not stats.get("thunder_god", false),
 		"apply":     func() -> void: stats["thunder_god"] = true,
 	},
-	{
-		"id":        "synergy_aura",
-		"name":      "★ Harmonic Resonance",
-		"desc":      "SYNERGY\nMelee + Boomerang mastered\nPassive damage aura",
-		"condition": func() -> bool:
-			return stats.get("melee_level", 1) >= 3 and stats.get("boomerang_level", 1) >= 3 and not stats.get("synergy_aura", false),
-		"apply":     func() -> void: stats["synergy_aura"] = true,
-	},
 	# ── New mechanics ───────────────────────────────────────────────────────────
 	{
 		"id":    "pierce",
 		"name":  "Piercing Shot",
 		"desc":  "+1 Pierce\nBullets pass through enemies",
 		"apply": func() -> void: stats["pierce"] += 1,
-	},
-	{
-		"id":    "area_boost",
-		"name":  "Wide Sweep",
-		"desc":  "+30% Melee & Aura area",
-		"apply": func() -> void: stats["area_mult"] = stats.get("area_mult", 1.0) * 1.3,
 	},
 	{
 		"id":        "repulsion",

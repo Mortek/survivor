@@ -1,6 +1,6 @@
 extends CharacterBody2D
 ## Player – centered on screen, moves via virtual joystick, auto-attacks.
-## Manages secondary weapons (MeleeWeapon, Boomerang, LightningChain) as children.
+## Manages secondary weapons (Boomerang, LightningChain) as children.
 
 # ── Signals ───────────────────────────────────────────────────────────────────
 signal health_changed(current_hp: int, max_hp: int)
@@ -22,8 +22,7 @@ var is_invincible: bool   = false
 var move_dir:      Vector2 = Vector2.ZERO
 
 # ── Secondary weapons ─────────────────────────────────────────────────────────
-var _melee:      MeleeWeapon   = null
-var _boomerangs: Array         = []
+var _boomerangs: Array          = []
 var _lightning:  LightningChain = null
 
 # ── Regen & aura accumulators ─────────────────────────────────────────────────
@@ -67,6 +66,7 @@ func _ready() -> void:
 	if not sprite.texture:
 		sprite.texture = _solid_tex(32, 32, Color(0.27, 0.47, 1.0))
 	GameManager.level_changed.connect(func(_l: int) -> void: Input.vibrate_handheld(60))
+	GameManager.level_changed.connect(func(_l: int) -> void: _levelup_ring())
 
 # ── Movement ──────────────────────────────────────────────────────────────────
 func _physics_process(delta: float) -> void:
@@ -265,16 +265,6 @@ func _nearest_enemies(count: int) -> Array:
 
 # ── Secondary Weapon Management ───────────────────────────────────────────────
 func _check_weapons() -> void:
-	# ── Melee ──────────────────────────────────────────────────────────────────
-	if GameManager.stats.get("melee_enabled", false):
-		if not _melee:
-			_melee = MeleeWeapon.new()
-			add_child(_melee)
-		var melee_lvl := int(GameManager.stats.get("melee_level", 1))
-		if GameManager.stats.get("crimson_reaper", false):
-			melee_lvl = 4
-		_melee.set_level(melee_lvl)
-
 	# ── Boomerang(s) ───────────────────────────────────────────────────────────
 	if GameManager.stats.get("boomerang_enabled", false):
 		var target_count := 3 if GameManager.stats.get("death_orbit", false) else 1
@@ -315,6 +305,25 @@ func _on_stats_changed() -> void:
 	_cache_stats()
 	_check_weapons()
 	_reset_attack_timer()
+
+func _levelup_ring() -> void:
+	var ring := Node2D.new()
+	ring.global_position = global_position
+	ring.z_index = 4
+	get_tree().current_scene.add_child(ring)
+	ring.connect("draw", func() -> void:
+		var p: float = ring.get_meta("progress", 0.0)
+		var alpha := (1.0 - p) * 0.85
+		var radius := 18.0 + p * 55.0
+		ring.draw_arc(Vector2.ZERO, radius, 0.0, TAU, 32, Color(1.0, 1.0, 0.55, alpha), 4.0)
+	)
+	var tw := ring.create_tween()
+	tw.tween_method(func(v: float) -> void:
+		if is_instance_valid(ring):
+			ring.set_meta("progress", v)
+			ring.queue_redraw()
+	, 0.0, 1.0, 0.55)
+	tw.tween_callback(ring.queue_free)
 
 static func _solid_tex(w: int, h: int, color: Color) -> ImageTexture:
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)

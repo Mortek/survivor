@@ -81,6 +81,19 @@ var _settings_overlay: Control = null
 # ── Player hit flash tracking ─────────────────────────────────────────────────
 var _prev_player_hp: int = 0
 
+# ── Boss HP bar ────────────────────────────────────────────────────────────────
+var _boss_hp_container: Control     = null
+var _boss_hp_bar:       ProgressBar = null
+
+# ── Wave countdown ─────────────────────────────────────────────────────────────
+var _wave_countdown_label: Label = null
+
+# ── Damage numbers toggle ──────────────────────────────────────────────────────
+var _damage_numbers_enabled: bool = true
+
+# ── Game-over combo label ──────────────────────────────────────────────────────
+var _go_combo_label: Label = null
+
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	_KILL_FEED_DATA = {
@@ -192,6 +205,15 @@ func _ready() -> void:
 	# ── Off-screen indicators ──
 	_build_indicator_layer()
 
+	# ── Vignette ──
+	_build_vignette()
+
+	# ── Wave countdown ──
+	_build_wave_countdown()
+
+	# ── Load damage numbers setting ──
+	_damage_numbers_enabled = _load_setting("damage_numbers", 1.0) > 0.5
+
 	# ── Tutorial hints (first run only) ──
 	var _meta := get_node_or_null("/root/MetaManager")
 	if _meta and not _meta.tutorial_done:
@@ -253,18 +275,22 @@ func _build_extra_go_labels() -> void:
 	_go_kills_label = _make_go_label()
 	_go_wave_label  = _make_go_label()
 	_go_coins_label = _make_go_label()
+	_go_combo_label = _make_go_label()
+	_go_combo_label.modulate = Color(1.0, 0.85, 0.2)
 	_go_best_label  = _make_go_label()
 	_go_best_label.add_theme_font_size_override("font_size", 14)
 	_go_best_label.modulate = Color(0.8, 0.8, 0.8)
 	vbox.add_child(_go_kills_label)
 	vbox.add_child(_go_wave_label)
 	vbox.add_child(_go_coins_label)
+	vbox.add_child(_go_combo_label)
 	vbox.add_child(_go_best_label)
 	var btn_idx := restart_btn.get_index()
 	vbox.move_child(_go_kills_label,  btn_idx)
 	vbox.move_child(_go_wave_label,   btn_idx + 1)
 	vbox.move_child(_go_coins_label,  btn_idx + 2)
-	vbox.move_child(_go_best_label,   btn_idx + 3)
+	vbox.move_child(_go_combo_label,  btn_idx + 3)
+	vbox.move_child(_go_best_label,   btn_idx + 4)
 
 func _make_go_label() -> Label:
 	var lbl := Label.new()
@@ -306,6 +332,39 @@ func _show_wave_banner(text: String, color: Color = Color.WHITE) -> void:
 	tw.tween_property(_wave_banner, "modulate:a", 1.0, 0.15)
 	tw.tween_interval(1.8)
 	tw.tween_property(_wave_banner, "modulate:a", 0.0, 0.4)
+
+# ── Vignette ──────────────────────────────────────────────────────────────────
+func _build_vignette() -> void:
+	var sz  := Vector2i(64, 64)
+	var img := Image.create(sz.x, sz.y, false, Image.FORMAT_RGBA8)
+	for y in sz.y:
+		for x in sz.x:
+			var nx    := float(x) / (sz.x - 1) * 2.0 - 1.0
+			var ny    := float(y) / (sz.y - 1) * 2.0 - 1.0
+			var d     := maxf(absf(nx), absf(ny))
+			var alpha := clampf((d - 0.55) / 0.45, 0.0, 1.0) * 0.48
+			img.set_pixel(x, y, Color(0.0, 0.0, 0.0, alpha))
+	var vignette := TextureRect.new()
+	vignette.texture      = ImageTexture.create_from_image(img)
+	vignette.stretch_mode = TextureRect.STRETCH_SCALE
+	vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vignette.z_index      = 10
+	ui.add_child(vignette)
+
+# ── Wave Countdown ─────────────────────────────────────────────────────────────
+func _build_wave_countdown() -> void:
+	_wave_countdown_label = Label.new()
+	_wave_countdown_label.add_theme_font_size_override("font_size", 12)
+	_wave_countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_wave_countdown_label.mouse_filter         = Control.MOUSE_FILTER_IGNORE
+	_wave_countdown_label.modulate             = Color(1.0, 1.0, 0.8, 0.7)
+	_wave_countdown_label.z_index              = 11
+	_wave_countdown_label.set_anchor_and_offset(SIDE_LEFT,   0.5, -55.0)
+	_wave_countdown_label.set_anchor_and_offset(SIDE_TOP,    0.0,  48.0)
+	_wave_countdown_label.set_anchor_and_offset(SIDE_RIGHT,  0.5,  55.0)
+	_wave_countdown_label.set_anchor_and_offset(SIDE_BOTTOM, 0.0,  64.0)
+	ui.add_child(_wave_countdown_label)
 
 # ── Kill Feed ─────────────────────────────────────────────────────────────────
 func _build_kill_feed() -> void:
@@ -415,26 +474,10 @@ func _on_combo_updated(count: int) -> void:
 	if not milestone:
 		return
 	_last_combo_shown = count
-	_spawn_combo_text(count)
+	var col := Color(1.0, 0.85, 0.1) if count < 10 else Color(1.0, 0.3, 0.1)
+	_add_kill_feed_entry("×%d COMBO!" % count, col)
 	if _audio and count >= 5:
 		_audio.play_any("combo")
-
-func _spawn_combo_text(count: int) -> void:
-	var lbl := Label.new()
-	var col  := Color(1.0, 0.85, 0.1) if count < 10 else Color(1.0, 0.3, 0.1)
-	lbl.text                 = "×%d COMBO!" % count
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 28 + mini(count, 20))
-	lbl.modulate             = col
-	lbl.z_index              = 22
-	lbl.set_anchors_preset(Control.PRESET_CENTER)
-	lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
-	ui.add_child(lbl)
-	var tw := lbl.create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(lbl, "offset_top",   -60.0, 0.7)
-	tw.tween_property(lbl, "modulate:a",    0.0,  0.7)
-	tw.tween_callback(lbl.queue_free).set_delay(0.7)
 
 # ── Enemy Events ──────────────────────────────────────────────────────────────
 # Kill feed labels/colors keyed by Enemy.Type int value.
@@ -451,6 +494,7 @@ func _on_enemy_spawned(enemy: Node) -> void:
 			enemy.split_requested.connect(_on_split_requested)
 	if enemy.enemy_type == Enemy.Type.BOSS:
 		_play_boss_intro(enemy)
+		_create_boss_hp_bar(enemy)
 
 func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int) -> void:
 	call_deferred("_spawn_coin", world_pos, xp)
@@ -485,7 +529,8 @@ func _on_enemy_hit_taken(world_pos: Vector2, amount: float) -> void:
 	call_deferred("_spawn_damage_number", world_pos, amount)
 	if _audio:
 		var hit_pick: String = (["hit", "hit2", "hit3"] as Array[String])[randi() % 3]
-		_audio.play(hit_pick)
+		var pitch := 1.0 + clampf(float(GameManager.combo_count) * 0.035, 0.0, 0.45)
+		_audio.play_pitched(hit_pick, pitch)
 
 func _on_split_requested(world_pos: Vector2) -> void:
 	# Spawn 2 small BASIC enemies at the split position
@@ -495,6 +540,54 @@ func _on_split_requested(world_pos: Vector2) -> void:
 func _spawn_split_children(world_pos: Vector2, wave_mult: float) -> void:
 	for off in [Vector2(-28, -10), Vector2(28, 10)]:
 		spawner.spawn_at(Enemy.Type.BASIC, world_pos + off, wave_mult, false)
+
+# ── Boss HP Bar ───────────────────────────────────────────────────────────────
+func _create_boss_hp_bar(boss: Node) -> void:
+	if _boss_hp_container:
+		_boss_hp_container.queue_free()
+	_boss_hp_container = Control.new()
+	_boss_hp_container.z_index      = 15
+	_boss_hp_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_hp_container.set_anchor_and_offset(SIDE_LEFT,   0.05, 0.0)
+	_boss_hp_container.set_anchor_and_offset(SIDE_TOP,    1.0, -42.0)
+	_boss_hp_container.set_anchor_and_offset(SIDE_RIGHT,  0.95, 0.0)
+	_boss_hp_container.set_anchor_and_offset(SIDE_BOTTOM, 1.0, -22.0)
+
+	_boss_hp_bar = ProgressBar.new()
+	_boss_hp_bar.max_value       = 100
+	_boss_hp_bar.value           = 100
+	_boss_hp_bar.show_percentage = false
+	_boss_hp_bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.85, 0.1, 0.1)
+	_boss_hp_bar.add_theme_stylebox_override("fill", fill)
+	_boss_hp_container.add_child(_boss_hp_bar)
+
+	var lbl := Label.new()
+	lbl.text                 = "💀 BOSS"
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_boss_hp_container.add_child(lbl)
+
+	ui.add_child(_boss_hp_container)
+
+	var e := boss as Enemy
+	if e:
+		e.hit_taken.connect(func(_pos: Vector2, _amt: float) -> void:
+			if is_instance_valid(e) and is_instance_valid(_boss_hp_bar):
+				_boss_hp_bar.value = (e.current_hp / e.max_hp) * 100.0
+		)
+		e.died.connect(func(_pos, _xp, _col, _type) -> void:
+			if is_instance_valid(_boss_hp_container):
+				var tw := _boss_hp_container.create_tween()
+				tw.tween_property(_boss_hp_container, "modulate:a", 0.0, 0.5)
+				tw.tween_callback(_boss_hp_container.queue_free)
+			_boss_hp_container = null
+			_boss_hp_bar       = null
+		)
 
 # ── Boss Death Hitpause ───────────────────────────────────────────────────────
 func _boss_death_hitpause() -> void:
@@ -682,43 +775,80 @@ func _spawn_coin(world_pos: Vector2, xp: int) -> void:
 	coin.setup(player, int(xp * mult))
 
 func _spawn_magnet_orb(world_pos: Vector2) -> void:
-	# Build a simple Area2D orb that attracts all coins when touched
-	var orb       := Area2D.new()
-	orb.z_index   = 5
+	var orb := Area2D.new()
+	orb.z_index         = 5
 	orb.collision_layer = 0
-	orb.collision_mask  = 1   # player layer
+	orb.collision_mask  = 1
 
-	var shape     := CollisionShape2D.new()
-	var circle    := CircleShape2D.new()
-	circle.radius = 14.0
+	var shape  := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 20.0
 	shape.shape   = circle
 	orb.add_child(shape)
 
-	var lbl       := Label.new()
-	lbl.text      = "🧲"
-	lbl.add_theme_font_size_override("font_size", 22)
-	lbl.position  = Vector2(-12, -12)
-	orb.add_child(lbl)
+	# Glowing orb visual using Node2D draw
+	var visual    := Node2D.new()
+	var orb_color := Color(0.2, 1.0, 0.65)
+	visual.connect("draw", func() -> void:
+		visual.draw_circle(Vector2.ZERO, 24.0, Color(orb_color.r, orb_color.g, orb_color.b, 0.12))
+		visual.draw_circle(Vector2.ZERO, 18.0, Color(orb_color.r, orb_color.g, orb_color.b, 0.22))
+		visual.draw_circle(Vector2.ZERO, 12.0, Color(orb_color.r, orb_color.g, orb_color.b, 0.55))
+		visual.draw_circle(Vector2.ZERO,  7.0, Color(orb_color.r, orb_color.g, orb_color.b, 0.90))
+		visual.draw_circle(Vector2.ZERO,  3.5, Color(1.0, 1.0, 1.0, 0.95))
+	)
+	orb.add_child(visual)
+
+	# Pulsate scale
+	var tw_pulse := visual.create_tween().set_loops()
+	tw_pulse.tween_property(visual, "scale", Vector2(1.35, 1.35), 0.38).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw_pulse.tween_property(visual, "scale", Vector2(0.80, 0.80), 0.38).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+	# Pulsate alpha glow
+	var tw_alpha := visual.create_tween().set_loops()
+	tw_alpha.tween_property(visual, "modulate:a", 1.0, 0.38).set_trans(Tween.TRANS_SINE)
+	tw_alpha.tween_property(visual, "modulate:a", 0.5, 0.38).set_trans(Tween.TRANS_SINE)
+
+	# Periodic particle emission
+	var particle_timer := Timer.new()
+	particle_timer.wait_time = 0.12
+	particle_timer.timeout.connect(func() -> void:
+		if is_instance_valid(orb):
+			_emit_magnet_particle(orb.global_position, orb_color)
+	)
+	orb.add_child(particle_timer)
 
 	orb.global_position = world_pos
+	coins_node.add_child(orb)
+	visual.queue_redraw()
+	particle_timer.start()
+
+	# Immediately pull all coins toward the player
+	for coin in coins_node.get_children():
+		if coin.has_method("attract_magnet"):
+			coin.attract_magnet()
+
 	orb.body_entered.connect(func(body: Node) -> void:
 		if not body.is_in_group("player"):
 			return
-		for coin in coins_node.get_children():
-			if coin.has_method("attract_magnet"):
-				coin.attract_magnet()
-		# Small flash feedback
 		_do_flash(Color(0.2, 1.0, 0.5, 0.3), 0.3)
 		if _audio:
 			_audio.play_any("coin_attract")
 		orb.queue_free()
 	)
-	coins_node.add_child(orb)
 
-	# Bob gently like a coin
-	var tw := orb.create_tween().set_loops()
-	tw.tween_property(lbl, "position:y", -16.0, 0.5).set_ease(Tween.EASE_IN_OUT)
-	tw.tween_property(lbl, "position:y", -8.0,  0.5).set_ease(Tween.EASE_IN_OUT)
+func _emit_magnet_particle(world_pos: Vector2, color: Color) -> void:
+	var p := ColorRect.new()
+	p.size  = Vector2(4.0, 4.0)
+	p.color = color
+	_get_fx().add_child(p)
+	p.global_position = world_pos + Vector2(randf_range(-10.0, 10.0), randf_range(-10.0, 10.0))
+	var dir := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized()
+	var end_pos := p.global_position + dir * randf_range(18.0, 38.0)
+	var tw := p.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(p, "global_position", end_pos, 0.55)
+	tw.tween_property(p, "modulate:a", 0.0, 0.55)
+	tw.tween_callback(p.queue_free).set_delay(0.55)
 
 func _spawn_death_particles(world_pos: Vector2, color: Color) -> void:
 	var p := DeathParticles.new()
@@ -727,6 +857,8 @@ func _spawn_death_particles(world_pos: Vector2, color: Color) -> void:
 	p.setup(color)
 
 func _spawn_damage_number(world_pos: Vector2, amount: float) -> void:
+	if not _damage_numbers_enabled:
+		return
 	var dn := DamageNumber.new()
 	_get_fx().add_child(dn)
 	dn.global_position = world_pos
@@ -816,14 +948,40 @@ func _build_stats_popup() -> Control:
 
 	var bg := ColorRect.new()
 	bg.color        = Color(0, 0, 0, 0.5)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and _stats_popup:
+			_stats_popup.queue_free()
+			_stats_popup = null
+			if GameManager.state == GameManager.State.PAUSED:
+				GameManager.state = GameManager.State.PLAYING
+				get_tree().paused = false
+	)
 	root.add_child(bg)
 
 	var panel := PanelContainer.new()
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	root.add_child(panel)
+
+	# X close button — top-right of panel
+	var close_x := Button.new()
+	close_x.text = "✕"
+	close_x.process_mode = Node.PROCESS_MODE_ALWAYS
+	close_x.add_theme_font_size_override("font_size", 16)
+	close_x.custom_minimum_size = Vector2(30, 28)
+	close_x.z_index = 30
+	close_x.position = Vector2(panel.position.x + pw - 32.0, panel.position.y - 14.0)
+	close_x.pressed.connect(func() -> void:
+		_stats_popup.queue_free()
+		_stats_popup = null
+		if GameManager.state == GameManager.State.PAUSED:
+			GameManager.state = GameManager.State.PLAYING
+			get_tree().paused = false
+	)
+	root.add_child(close_x)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
@@ -840,6 +998,7 @@ func _build_stats_popup() -> Control:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical    = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode   = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	vbox.add_child(scroll)
 
 	var inner := VBoxContainer.new()
@@ -976,7 +1135,7 @@ func _build_settings_overlay() -> Control:
 	root.add_child(bg)
 
 	var pw := minf(vp.x - 16.0, 380.0)
-	var ph := 310.0
+	var ph := 360.0
 	var panel := PanelContainer.new()
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
@@ -1013,6 +1172,22 @@ func _build_settings_overlay() -> Control:
 	vib_row.add_child(vib_toggle)
 	vbox.add_child(vib_row)
 
+	# Damage numbers toggle
+	var dmg_row := HBoxContainer.new()
+	var dmg_lbl := Label.new()
+	dmg_lbl.text                  = "Damage Numbers"
+	dmg_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dmg_lbl.add_theme_font_size_override("font_size", 15)
+	dmg_row.add_child(dmg_lbl)
+	var dmg_toggle := CheckButton.new()
+	dmg_toggle.button_pressed = _load_setting("damage_numbers", 1.0) > 0.5
+	dmg_toggle.toggled.connect(func(on: bool) -> void:
+		_damage_numbers_enabled = on
+		_save_setting("damage_numbers", 1.0 if on else 0.0)
+	)
+	dmg_row.add_child(dmg_toggle)
+	vbox.add_child(dmg_row)
+
 	vbox.add_child(HSeparator.new())
 
 	var menu_btn := Button.new()
@@ -1023,18 +1198,26 @@ func _build_settings_overlay() -> Control:
 	)
 	vbox.add_child(menu_btn)
 
-	var close_btn := Button.new()
-	close_btn.text = "CLOSE  ✕"
-	close_btn.add_theme_font_size_override("font_size", 16)
-	close_btn.pressed.connect(func() -> void:
-		root.queue_free()
-		_settings_overlay = null
-	)
-	vbox.add_child(close_btn)
-
 	# Apply saved volume on open
 	var saved_vol := _load_setting("volume", 0.8)
 	AudioServer.set_bus_volume_db(0, linear_to_db(saved_vol))
+
+	# X close button — top-right of panel
+	var close_x := Button.new()
+	close_x.text = "✕"
+	close_x.process_mode = Node.PROCESS_MODE_ALWAYS
+	close_x.add_theme_font_size_override("font_size", 16)
+	close_x.custom_minimum_size = Vector2(30, 28)
+	close_x.z_index = 30
+	close_x.position = Vector2(panel.position.x + pw - 32.0, panel.position.y - 14.0)
+	close_x.pressed.connect(func() -> void:
+		root.queue_free()
+		_settings_overlay = null
+		if GameManager.state == GameManager.State.PAUSED:
+			GameManager.state = GameManager.State.PLAYING
+			get_tree().paused = false
+	)
+	root.add_child(close_x)
 
 	return root
 
@@ -1130,6 +1313,10 @@ func _process(delta: float) -> void:
 	if _indicator_timer >= INDICATOR_UPDATE_INTERVAL:
 		_indicator_timer = 0.0
 		_update_edge_indicators()
+	# Wave countdown
+	if _wave_countdown_label and spawner:
+		var remaining: float = spawner.get_wave_time_remaining()
+		_wave_countdown_label.text = "next wave: %ds" % maxi(int(ceil(remaining)), 0)
 
 # ── Off-Screen Enemy Indicators ───────────────────────────────────────────────
 func _build_indicator_layer() -> void:
@@ -1139,12 +1326,23 @@ func _build_indicator_layer() -> void:
 	_indicator_layer.z_index      = 12
 	ui.add_child(_indicator_layer)
 	for _i in INDICATOR_POOL_SIZE:
-		var lbl := Label.new()
-		lbl.add_theme_font_size_override("font_size", 22)
-		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		lbl.visible      = false
-		_indicator_layer.add_child(lbl)
-		_indicator_labels.append(lbl)
+		var dot := ColorRect.new()
+		dot.size         = Vector2(14, 14)
+		dot.pivot_offset = Vector2(7, 7)
+		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		dot.visible      = false
+		_indicator_layer.add_child(dot)
+		_indicator_labels.append(dot)
+		# Scale pulse
+		var tw := dot.create_tween()
+		tw.set_loops()
+		tw.tween_property(dot, "scale", Vector2(1.7, 1.7), 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(dot, "scale", Vector2(0.6, 0.6), 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		# Alpha glow pulse (offset phase)
+		var tw2 := dot.create_tween()
+		tw2.set_loops()
+		tw2.tween_property(dot, "modulate:a", 1.0, 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw2.tween_property(dot, "modulate:a", 0.45, 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _update_edge_indicators() -> void:
 	if not _indicator_layer:
@@ -1180,17 +1378,11 @@ func _update_edge_indicators() -> void:
 			col = Color(1.0, 0.75, 0.2)
 		else:
 			col = Color(1.0, 0.4, 0.4)
-		var lbl      := _indicator_labels[slot] as Label
-		lbl.text     = _angle_to_arrow(dir.angle())
-		lbl.modulate = col
-		lbl.position = edge_pos - Vector2(11.0, 11.0)
-		lbl.visible  = true
+		var dot      := _indicator_labels[slot] as ColorRect
+		dot.color    = col
+		dot.position = edge_pos - Vector2(5.0, 5.0)
+		dot.visible  = true
 		slot        += 1
-
-func _angle_to_arrow(angle: float) -> String:
-	var a   := fmod(angle + TAU, TAU)
-	var idx := int(round(a / TAU * 8.0)) % 8
-	return ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"][idx]
 
 # ── Tutorial Hints ────────────────────────────────────────────────────────────
 func _show_tutorial_hints() -> void:
@@ -1268,6 +1460,8 @@ func _on_game_over() -> void:
 		_go_wave_label.text  = "Wave: " + str(GameManager.wave)
 	if _go_coins_label:
 		_go_coins_label.text = "Coins earned: " + _fmt(GameManager.coins_this_run)
+	if _go_combo_label:
+		_go_combo_label.text = "Best combo: ×%d" % GameManager.max_combo
 	var meta := get_node_or_null("/root/MetaManager")
 	if meta:
 		meta.update_best_run(GameManager.wave, GameManager.kills, GameManager.survival_time)
