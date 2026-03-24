@@ -29,6 +29,7 @@ var _go_best_label:  Label = null
 
 # ── Level-up / boss screen flash ──────────────────────────────────────────────
 var _level_flash: ColorRect = null
+var _flash_tween: Tween    = null
 
 # ── Dev speed button ──────────────────────────────────────────────────────────
 var _speed_btn:   Button = null
@@ -174,6 +175,9 @@ func _ready() -> void:
 
 	# ── Settings button ──
 	_build_settings_button()
+
+	# ── Stats button ──
+	_build_stats_button()
 
 	# ── Red flash on player hit ──
 	player.health_changed.connect(_on_player_health_changed)
@@ -623,10 +627,13 @@ func _on_upgrade_available_flash(_choices) -> void:
 func _do_flash(color: Color, duration: float) -> void:
 	if not _level_flash:
 		return
-	_level_flash.size  = get_viewport().get_visible_rect().size
-	_level_flash.color = color
-	var tw := create_tween()
-	tw.tween_property(_level_flash, "color:a", 0.0, duration)
+	if _flash_tween and _flash_tween.is_running():
+		_flash_tween.kill()
+	_level_flash.size    = get_viewport().get_visible_rect().size
+	_level_flash.color   = color
+	_level_flash.color.a = clampf(color.a, 0.0, 0.6)
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(_level_flash, "color:a", 0.0, duration)
 
 # ── FX Spawning ───────────────────────────────────────────────────────────────
 func _spawn_coin(world_pos: Vector2, xp: int) -> void:
@@ -695,7 +702,7 @@ func _get_fx() -> Node2D:
 func _build_pause_overlay() -> void:
 	_pause_overlay = Control.new()
 	_pause_overlay.process_mode   = Node.PROCESS_MODE_ALWAYS
-	_pause_overlay.mouse_filter   = Control.MOUSE_FILTER_STOP
+	_pause_overlay.mouse_filter   = Control.MOUSE_FILTER_IGNORE
 	_pause_overlay.z_index        = 30
 	_pause_overlay.visible        = false
 
@@ -726,6 +733,139 @@ func _position_pause_overlay() -> void:
 	var lbl := _pause_overlay.get_node("PausedLabel") as Label
 	lbl.position = Vector2.ZERO
 	lbl.size     = vp
+
+# ── Stats Button & Popup ───────────────────────────────────────────────────────
+var _stats_popup: Control = null
+
+func _build_stats_button() -> void:
+	var btn := Button.new()
+	btn.text = "📊"
+	btn.add_theme_font_size_override("font_size", 16)
+	btn.custom_minimum_size = Vector2(36, 26)
+	btn.process_mode   = Node.PROCESS_MODE_ALWAYS
+	btn.z_index        = 35
+	btn.z_as_relative  = false
+	btn.pressed.connect(_open_stats_popup)
+	$UI/HUD.add_child(btn)
+	call_deferred("_position_stats_btn", btn)
+
+func _position_stats_btn(btn: Button) -> void:
+	var vp := get_viewport_rect().size
+	btn.position = Vector2(vp.x - 146.0, 26.0)
+
+func _open_stats_popup() -> void:
+	if _stats_popup:
+		_stats_popup.queue_free()
+		_stats_popup = null
+		return
+	if GameManager.state == GameManager.State.PLAYING:
+		GameManager.state = GameManager.State.PAUSED
+		get_tree().paused = true
+	_stats_popup = _build_stats_popup()
+	ui.add_child(_stats_popup)
+
+func _build_stats_popup() -> Control:
+	var vp  := get_viewport_rect().size
+	var pw  := minf(vp.x - 24.0, 300.0)
+	var ph  := minf(vp.y * 0.72, 460.0)
+
+	var root := Control.new()
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.z_index      = 29
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	var bg := ColorRect.new()
+	bg.color        = Color(0, 0, 0, 0.5)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(bg)
+
+	var panel := PanelContainer.new()
+	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
+	panel.size     = Vector2(pw, ph)
+	root.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text                 = "STATS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 20)
+	vbox.add_child(title)
+
+	vbox.add_child(HSeparator.new())
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical    = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(scroll)
+
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 10)
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(inner)
+
+	var s := GameManager.stats
+	var categories: Array = [
+		["⚔  OFFENSE", [
+			["DMG",         "%d" % s.get("damage", 0)],
+			["Crit Chance", "%d%%" % int(s.get("crit_chance", 0.0) * 100.0)],
+			["Crit DMG",    "2.0×"],
+			["ATK Speed",   "%.2f×" % s.get("attack_speed", 1.0)],
+			["Projectiles", "%d" % s.get("projectile_count", 1)],
+			["Pierce",      "%d" % s.get("pierce", 0)],
+			["Area",        "%.0f%%" % (s.get("area_mult", 1.0) * 100.0)],
+			["Knockback",   "%.0f" % s.get("knockback", 0.0)],
+		]],
+		["🛡  DEFENSE", [
+			["Max HP",      "%d" % s.get("max_health", 100)],
+			["Armor",       "%d" % s.get("armor", 0)],
+			["Lifesteal",   "%d%%" % int(s.get("lifesteal", 0.0) * 100.0)],
+			["Regen",       "%.1f/s" % s.get("regen", 0.0)],
+			["Shield",      "%d charges" % s.get("shield_charges", 0)],
+		]],
+		["✦  UTILITY", [
+			["Speed",         "%.0f" % s.get("speed", 150.0)],
+			["XP Gain",       "%.0f%%" % (s.get("xp_multiplier", 1.0) * 100.0)],
+			["Pickup Range",  "%.0f" % s.get("pickup_radius", 60.0)],
+			["Slow on Hit",   "Yes" if s.get("slow_on_hit", false) else "No"],
+			["Burn on Hit",   "Yes" if s.get("burn_on_hit", false) else "No"],
+			["Dash",          "Yes" if s.get("dash_enabled", false) else "No"],
+		]],
+	]
+
+	for cat in categories:
+		var header := Label.new()
+		header.text          = cat[0]
+		header.add_theme_font_size_override("font_size", 14)
+		header.modulate      = Color(1.0, 0.85, 0.3)
+		inner.add_child(header)
+
+		inner.add_child(HSeparator.new())
+
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_theme_constant_override("h_separation", 16)
+		grid.add_theme_constant_override("v_separation", 4)
+		inner.add_child(grid)
+
+		for row in cat[1]:
+			var key_lbl := Label.new()
+			key_lbl.text                  = row[0]
+			key_lbl.add_theme_font_size_override("font_size", 13)
+			key_lbl.modulate              = Color(0.75, 0.75, 0.75)
+			key_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(key_lbl)
+			var val_lbl := Label.new()
+			val_lbl.text                 = row[1]
+			val_lbl.add_theme_font_size_override("font_size", 13)
+			val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			grid.add_child(val_lbl)
+
+	return root
 
 # ── Player Hit Flash ──────────────────────────────────────────────────────────
 func _on_player_health_changed(current: int, _max: int) -> void:
@@ -774,6 +914,9 @@ func _position_settings_btn(btn: Button) -> void:
 func _open_settings() -> void:
 	if _settings_overlay:
 		return
+	if GameManager.state == GameManager.State.PLAYING:
+		GameManager.state = GameManager.State.PAUSED
+		get_tree().paused = true
 	_settings_overlay = _build_settings_overlay()
 	ui.add_child(_settings_overlay)
 
@@ -788,7 +931,7 @@ func _build_settings_overlay() -> Control:
 	bg.color        = Color(0, 0, 0, 0.75)
 	bg.position     = Vector2.ZERO
 	bg.size         = vp
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(bg)
 
 	var pw := minf(vp.x - 16.0, 380.0)
@@ -835,9 +978,7 @@ func _build_settings_overlay() -> Control:
 	menu_btn.text = "⬅  MAIN MENU"
 	menu_btn.add_theme_font_size_override("font_size", 16)
 	menu_btn.pressed.connect(func() -> void:
-		Engine.time_scale  = 1.0
-		get_tree().paused  = false
-		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+		_show_quit_confirm(root)
 	)
 	vbox.add_child(menu_btn)
 
@@ -856,6 +997,50 @@ func _build_settings_overlay() -> Control:
 
 	return root
 
+func _show_quit_confirm(settings_root: Control) -> void:
+	var vp    := get_viewport_rect().size
+	var cw    := minf(vp.x - 40.0, 300.0)
+	var confirm := PanelContainer.new()
+	confirm.process_mode = Node.PROCESS_MODE_ALWAYS
+	confirm.z_index      = 40
+	confirm.z_as_relative = false
+	confirm.position = Vector2((vp.x - cw) * 0.5, vp.y * 0.35)
+	confirm.size     = Vector2(cw, 0)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	confirm.add_child(vbox)
+
+	var lbl := Label.new()
+	lbl.text                 = "Quit to main menu?\nYour run will be lost."
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 15)
+	lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(lbl)
+
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 12)
+	vbox.add_child(row)
+
+	var yes_btn := Button.new()
+	yes_btn.text = "Yes, quit"
+	yes_btn.add_theme_font_size_override("font_size", 15)
+	yes_btn.pressed.connect(func() -> void:
+		Engine.time_scale = 1.0
+		get_tree().paused = false
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	)
+	row.add_child(yes_btn)
+
+	var no_btn := Button.new()
+	no_btn.text = "Cancel"
+	no_btn.add_theme_font_size_override("font_size", 15)
+	no_btn.pressed.connect(confirm.queue_free)
+	row.add_child(no_btn)
+
+	settings_root.add_child(confirm)
+
 func _make_volume_row(label_text: String, on_change: Callable, initial: float) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	var lbl := Label.new()
@@ -872,6 +1057,17 @@ func _make_volume_row(label_text: String, on_change: Callable, initial: float) -
 	slider.value_changed.connect(on_change)
 	row.add_child(slider)
 	return row
+
+func _fmt(n: int) -> String:
+	var s := str(n)
+	var result := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		if count > 0 and count % 3 == 0:
+			result = "," + result
+		result = s[i] + result
+		count += 1
+	return result
 
 func _save_setting(key: String, value: float) -> void:
 	var cfg := ConfigFile.new()
@@ -935,7 +1131,7 @@ func _on_game_over() -> void:
 	if _go_wave_label:
 		_go_wave_label.text  = "Wave: " + str(GameManager.wave)
 	if _go_coins_label:
-		_go_coins_label.text = "Coins earned: " + str(GameManager.coins_this_run)
+		_go_coins_label.text = "Coins earned: " + _fmt(GameManager.coins_this_run)
 	var meta := get_node_or_null("/root/MetaManager")
 	if meta:
 		meta.update_best_run(GameManager.wave, GameManager.kills, GameManager.survival_time)

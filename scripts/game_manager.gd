@@ -191,7 +191,11 @@ func try_offer_curse() -> void:
 	if pool.is_empty():
 		return
 	pool.shuffle()
-	var options := pool.slice(0, min(2, pool.size()))
+	var extra := 0
+	var meta := get_node_or_null("/root/MetaManager")
+	if meta:
+		extra = meta.get_upgrade_level("double_curse")
+	var options := pool.slice(0, min(2 + extra, pool.size()))
 	state = State.CURSE_OFFER
 	get_tree().paused = true
 	curse_offered.emit(options)

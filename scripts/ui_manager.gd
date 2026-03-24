@@ -120,7 +120,18 @@ func _on_wave_changed(w: int) -> void:
 	wave_label.text = "Wave %d" % w
 
 func _on_coins_changed(total: int) -> void:
-	coin_label.text = "🪙 " + str(total)
+	coin_label.text = "🪙 " + _format_number(total)
+
+func _format_number(n: int) -> String:
+	var s := str(n)
+	var result := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		if count > 0 and count % 3 == 0:
+			result = "," + result
+		result = s[i] + result
+		count += 1
+	return result
 
 func _on_kills_changed(total: int) -> void:
 	if kills_label:

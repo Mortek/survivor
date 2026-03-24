@@ -64,7 +64,7 @@ func _build_ui() -> void:
 	var meta := get_node_or_null("/root/MetaManager")
 	if meta:
 		var coin_lbl := Label.new()
-		coin_lbl.text                 = "🪙  " + str(meta.total_coins) + " lifetime coins"
+		coin_lbl.text                 = "🪙  " + _fmt_num(meta.total_coins) + " lifetime coins"
 		coin_lbl.add_theme_font_size_override("font_size", 18)
 		coin_lbl.modulate             = Color(1.0, 0.88, 0.25)
 		coin_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -93,7 +93,7 @@ func _build_ui() -> void:
 
 	# ── PLAY button ──────────────────────────────────────────────────────────────
 	var play_btn := Button.new()
-	play_btn.text                = "▶  PLAY"
+	play_btn.text                = "PLAY"
 	play_btn.add_theme_font_size_override("font_size", 32)
 	play_btn.position            = Vector2(CX - 120.0, 420.0)
 	play_btn.size                = Vector2(240.0, 72.0)
@@ -102,7 +102,7 @@ func _build_ui() -> void:
 
 	# ── META UPGRADES button ──────────────────────────────────────────────────────
 	var meta_btn := Button.new()
-	meta_btn.text                = "⚡  META UPGRADES"
+	meta_btn.text                = "META UPGRADES"
 	meta_btn.add_theme_font_size_override("font_size", 20)
 	meta_btn.position            = Vector2(CX - 120.0, 508.0)
 	meta_btn.size                = Vector2(240.0, 54.0)
@@ -111,7 +111,7 @@ func _build_ui() -> void:
 
 	# ── SETTINGS button ──────────────────────────────────────────────────────────
 	var settings_btn := Button.new()
-	settings_btn.text                = "⚙  SETTINGS"
+	settings_btn.text                = "SETTINGS"
 	settings_btn.add_theme_font_size_override("font_size", 20)
 	settings_btn.position            = Vector2(CX - 120.0, 574.0)
 	settings_btn.size                = Vector2(240.0, 54.0)
@@ -120,7 +120,7 @@ func _build_ui() -> void:
 
 	# ── DAILY CHALLENGE button ─────────────────────────────────────────────────
 	var daily_btn := Button.new()
-	daily_btn.text                = "📅  DAILY CHALLENGE"
+	daily_btn.text                = "DAILY CHALLENGE"
 	daily_btn.add_theme_font_size_override("font_size", 18)
 	daily_btn.position            = Vector2(CX - 120.0, 640.0)
 	daily_btn.size                = Vector2(240.0, 54.0)
@@ -230,7 +230,7 @@ func _build_settings_overlay() -> Control:
 	vbox.add_child(HSeparator.new())
 
 	var close_btn := Button.new()
-	close_btn.text = "CLOSE  ✕"
+	close_btn.text = "CLOSE"
 	close_btn.add_theme_font_size_override("font_size", 16)
 	close_btn.pressed.connect(root.queue_free)
 	vbox.add_child(close_btn)
@@ -252,6 +252,13 @@ func _on_daily_challenge() -> void:
 	_ui_layer.add_child(popup)
 
 func _build_challenge_popup(curse_name: String) -> Control:
+	# Look up full curse data from the pool
+	var curse_data: Dictionary = {}
+	for c in GameManager._curse_pool:
+		if c["name"] == curse_name:
+			curse_data = c
+			break
+
 	var vp   := Vector2(540.0, 960.0)
 	var root := Control.new()
 	root.position = Vector2.ZERO
@@ -265,15 +272,15 @@ func _build_challenge_popup(curse_name: String) -> Control:
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	root.add_child(bg)
 
-	var pw := 340.0
-	var ph := 240.0
+	var pw := 360.0
+	var ph := 370.0
 	var panel := PanelContainer.new()
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	root.add_child(panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 10)
 	panel.add_child(vbox)
 
 	var title := Label.new()
@@ -283,19 +290,40 @@ func _build_challenge_popup(curse_name: String) -> Control:
 	title.modulate             = Color(1.0, 0.9, 0.2)
 	vbox.add_child(title)
 
-	var desc := Label.new()
-	desc.text                 = "Today's curse:\n" + curse_name
-	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc.add_theme_font_size_override("font_size", 16)
-	desc.modulate             = Color(1.0, 0.5, 0.2)
-	desc.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(desc)
+	vbox.add_child(HSeparator.new())
+
+	# Curse name
+	var name_lbl := Label.new()
+	name_lbl.text                 = curse_name
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.add_theme_font_size_override("font_size", 18)
+	name_lbl.modulate             = Color(1.0, 0.45, 0.1)
+	vbox.add_child(name_lbl)
+
+	# Penalty description
+	if not curse_data.is_empty():
+		var effect_lbl := Label.new()
+		effect_lbl.text                 = curse_data.get("desc", "")
+		effect_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		effect_lbl.add_theme_font_size_override("font_size", 14)
+		effect_lbl.modulate             = Color(0.9, 0.9, 0.9)
+		effect_lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
+		vbox.add_child(effect_lbl)
+
+		# Reward
+		var reward_lbl := Label.new()
+		reward_lbl.text                 = "Reward: " + curse_data.get("reward", "")
+		reward_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		reward_lbl.add_theme_font_size_override("font_size", 14)
+		reward_lbl.modulate             = Color(0.3, 1.0, 0.5)
+		reward_lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
+		vbox.add_child(reward_lbl)
 
 	var sub := Label.new()
-	sub.text                 = "This curse is automatically applied.\nCan you survive it?"
+	sub.text                 = "This curse is applied from the start of the run.\nGoal: survive as long as possible — reach Wave 10 to prove yourself, Wave 20 to master it.\nEach wave lasts 30 seconds."
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 13)
-	sub.modulate             = Color(0.75, 0.75, 0.75)
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.modulate             = Color(0.6, 0.6, 0.6)
 	sub.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(sub)
 
@@ -307,7 +335,7 @@ func _build_challenge_popup(curse_name: String) -> Control:
 	vbox.add_child(btn_row)
 
 	var play_btn := Button.new()
-	play_btn.text = "▶  PLAY"
+	play_btn.text = "PLAY"
 	play_btn.add_theme_font_size_override("font_size", 18)
 	play_btn.pressed.connect(func() -> void:
 		GameManager.daily_challenge_active = true
@@ -323,6 +351,17 @@ func _build_challenge_popup(curse_name: String) -> Control:
 	btn_row.add_child(cancel_btn)
 
 	return root
+
+func _fmt_num(n: int) -> String:
+	var s := str(n)
+	var result := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		if count > 0 and count % 3 == 0:
+			result = "," + result
+		result = s[i] + result
+		count += 1
+	return result
 
 func _save_setting(key: String, value: float) -> void:
 	var cfg := ConfigFile.new()
