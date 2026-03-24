@@ -100,26 +100,27 @@ func _thunder_aoe(pos: Vector2, dmg: int, already_hit: Array, enemies: Array) ->
 
 # ── Visuals ───────────────────────────────────────────────────────────────────
 func _draw_bolt(from: Vector2, to: Vector2) -> void:
-	# Epic glowing bolt with 5 layers
+	# Layered glow lines from wide bloom to tight core
 	var points: Array[Vector2] = []
 	points.append(from)
-	for i in range(1, 11):
-		var t  := float(i) / 11.0
+	for i in range(1, 13):
+		var t  := float(i) / 13.0
 		var p  := from.lerp(to, t)
-		var jitter := lerpf(18.0, 10.0, t)
+		var jitter := lerpf(22.0, 8.0, t)
 		p += Vector2(randf_range(-jitter, jitter), randf_range(-jitter, jitter))
 		points.append(p)
 	points.append(to)
 
-	var bloom  := _create_line_layer(points,  8, 14.0, Color(0.2,  0.5,  1.0, 0.08))
-	var glow   := _create_line_layer(points,  9,  8.0, Color(0.3,  0.7,  1.0, 0.18))
-	var outer  := _create_line_layer(points, 10,  4.5, Color(0.45, 0.85, 1.0, 0.55))
-	var mid    := _create_line_layer(points, 11,  2.5, Color(0.7,  0.95, 1.0, 0.85))
-	var core   := _create_line_layer(points, 12,  1.0, Color(1.0,  1.0,  1.0, 1.0))
+	var mega    := _create_line_layer(points,  7, 22.0, Color(0.15, 0.3,  1.0, 0.05))
+	var bloom   := _create_line_layer(points,  8, 16.0, Color(0.2,  0.5,  1.0, 0.10))
+	var glow    := _create_line_layer(points,  9, 10.0, Color(0.3,  0.7,  1.0, 0.25))
+	var outer   := _create_line_layer(points, 10,  5.5, Color(0.45, 0.85, 1.0, 0.60))
+	var mid     := _create_line_layer(points, 11,  3.0, Color(0.75, 0.95, 1.0, 0.90))
+	var core    := _create_line_layer(points, 12,  1.2, Color(1.0,  1.0,  1.0, 1.0))
 
-	for line: Line2D in [bloom, glow, outer, mid, core]:
+	for line: Line2D in [mega, bloom, glow, outer, mid, core]:
 		var tw: Tween = line.create_tween()
-		tw.tween_property(line, "modulate:a", 0.0, 0.32)
+		tw.tween_property(line, "modulate:a", 0.0, 0.35)
 		tw.tween_callback(line.queue_free)
 
 	# Impact flash at hit position
@@ -133,10 +134,11 @@ func _draw_impact_flash(pos: Vector2) -> void:
 	flash.set_meta("progress", 0.0)
 	flash.connect("draw", func() -> void:
 		var p: float = flash.get_meta("progress", 0.0)
-		var alpha := (1.0 - p) * 0.8
-		var r := 6.0 + p * 12.0
-		flash.draw_circle(Vector2.ZERO, r, Color(0.5, 0.85, 1.0, alpha * 0.3))
-		flash.draw_circle(Vector2.ZERO, r * 0.5, Color(0.8, 0.95, 1.0, alpha * 0.6))
+		var alpha := (1.0 - p) * 0.9
+		var r := 8.0 + p * 18.0
+		flash.draw_circle(Vector2.ZERO, r * 1.5, Color(0.3, 0.6, 1.0, alpha * 0.12))
+		flash.draw_circle(Vector2.ZERO, r, Color(0.5, 0.85, 1.0, alpha * 0.35))
+		flash.draw_circle(Vector2.ZERO, r * 0.55, Color(0.8, 0.95, 1.0, alpha * 0.65))
 		flash.draw_circle(Vector2.ZERO, r * 0.2, Color(1.0, 1.0, 1.0, alpha))
 	)
 	var tw := flash.create_tween()
@@ -144,7 +146,7 @@ func _draw_impact_flash(pos: Vector2) -> void:
 		if is_instance_valid(flash):
 			flash.set_meta("progress", v)
 			flash.queue_redraw()
-	, 0.0, 1.0, 0.2)
+	, 0.0, 1.0, 0.25)
 	tw.tween_callback(flash.queue_free)
 
 func _create_line_layer(points: Array[Vector2], z: int, w: float, col: Color) -> Line2D:

@@ -63,8 +63,10 @@ func _ready() -> void:
 	GameManager.stats_changed.connect(_on_stats_changed)
 	_cache_stats()
 	if not sprite.texture:
-		sprite.texture = _warrior_tex(32)
+		sprite.texture = _warrior_tex(48)
 		sprite.modulate = _BASE_COLOR
+	# Animated energy aura around the player
+	_start_energy_aura()
 	GameManager.level_changed.connect(func(_l: int) -> void: Input.vibrate_handheld(60))
 	GameManager.level_changed.connect(func(_l: int) -> void: _levelup_ring())
 
@@ -313,13 +315,49 @@ func _levelup_ring() -> void:
 	, 0.0, 1.0, 0.55)
 	tw.tween_callback(ring.queue_free)
 
+var _aura_ring: Node2D = null
+func _start_energy_aura() -> void:
+	_aura_ring = Node2D.new()
+	_aura_ring.z_index = -1
+	add_child(_aura_ring)
+	_aura_ring.set_meta("phase", 0.0)
+	_aura_ring.connect("draw", func() -> void:
+		var p: float = _aura_ring.get_meta("phase", 0.0)
+		# Outer pulsing halo
+		var r1 := 16.0 + sin(p * 3.0) * 3.0
+		var a1 := 0.15 + sin(p * 2.0) * 0.05
+		_aura_ring.draw_arc(Vector2.ZERO, r1, 0.0, TAU, 24,
+			Color(0.4, 0.7, 1.0, a1), 2.0)
+		# Inner bright ring
+		var r2 := 11.0 + sin(p * 4.5 + 1.0) * 2.0
+		_aura_ring.draw_arc(Vector2.ZERO, r2, 0.0, TAU, 20,
+			Color(0.6, 0.85, 1.0, a1 + 0.05), 1.5)
+	)
+	# Animate phase continuously
+	var tw := _aura_ring.create_tween()
+	tw.set_loops()
+	tw.tween_method(func(v: float) -> void:
+		if is_instance_valid(_aura_ring):
+			_aura_ring.set_meta("phase", v)
+			_aura_ring.queue_redraw()
+	, 0.0, TAU, 2.0)
+
 static func _warrior_tex(size: int) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var cx := (size - 1) * 0.5
 	var cy := (size - 1) * 0.5
-	# Body: octagonal armored shape with gradient
-	var r_body := size * 0.44
+	var r_body := size * 0.38
+	# Pass 0: wide outer energy aura glow
+	for y in size:
+		for x in size:
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var d := sqrt(dx * dx + dy * dy)
+			if d > r_body * 1.05 and d <= r_body * 1.35:
+				var glow := 1.0 - (d - r_body * 1.05) / (r_body * 0.30)
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, glow * 0.2))
+	# Pass 1: armored octagonal torso with layered energy
 	for y in size:
 		for x in size:
 			var dx := float(x) - cx
@@ -328,14 +366,24 @@ static func _warrior_tex(size: int) -> ImageTexture:
 			var sector := fmod(absf(angle) + PI / 8.0, PI / 4.0) - PI / 8.0
 			var oct_r  := r_body / cos(sector) * cos(PI / 8.0)
 			var d := sqrt(dx * dx + dy * dy)
-			if d <= oct_r * 0.96:
-				# Gradient from center to edge
-				var intensity := 1.0 - (d / oct_r) * 0.35
+			if d <= oct_r * 0.90:
+				var norm_d := d / oct_r
+				var intensity := 1.0 - norm_d * 0.4
+				# Radial energy streaks
+				var streak := absf(sin(angle * 4.0)) * 0.12 * (1.0 - norm_d)
+				# Concentric energy rings
+				var ring := absf(sin(norm_d * PI * 3.5)) * 0.06
+				intensity += streak + ring
 				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
-			elif d <= oct_r * 1.02:
-				# Bright edge rim
-				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.5))
-	# Helmet with visor slit
+			elif d <= oct_r:
+				# Bright armor rim with bevel
+				var rim_t := (d - oct_r * 0.90) / (oct_r * 0.10)
+				var i := 0.85 + rim_t * 0.15
+				img.set_pixel(x, y, Color(i, i, i, 1.0))
+			elif d <= oct_r * 1.05:
+				var glow := 1.0 - (d - oct_r) / (oct_r * 0.05)
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, glow * 0.45))
+	# Helmet: larger with crest and visor
 	var head_r := size * 0.20
 	var head_cy := cy - size * 0.30
 	for y in size:
@@ -344,43 +392,121 @@ static func _warrior_tex(size: int) -> ImageTexture:
 			var dy := float(y) - head_cy
 			var d := sqrt(dx * dx + dy * dy)
 			if d <= head_r:
-				var intensity := 1.0 - (d / head_r) * 0.2
-				img.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
-			elif d <= head_r + 1.0:
-				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.4))
-	# Visor slit (dark horizontal line on helmet)
+				var norm_d := d / head_r
+				var intensity := 1.0 - norm_d * 0.15
+				# Subtle face plate shading
+				var shade := -dy / head_r * 0.08
+				intensity += shade
+				img.set_pixel(x, y, Color(clampf(intensity, 0.0, 1.0), clampf(intensity, 0.0, 1.0), clampf(intensity, 0.0, 1.0), 1.0))
+			elif d <= head_r + 2.0:
+				var fade := 1.0 - (d - head_r) / 2.0
+				img.set_pixel(x, y, Color(1.0, 1.0, 1.0, fade * 0.4))
+	# Helmet crest — taller spike
+	for dy in range(-6, 0):
+		var py := int(head_cy - head_r) + dy
+		var half_w := maxf(1.0 + float(dy + 6) * 0.25, 0.5)
+		for ddx in range(int(-half_w), int(half_w) + 1):
+			var px := int(cx) + ddx
+			if px >= 0 and px < size and py >= 0 and py < size:
+				var ci := 1.0 - float(absf(ddx)) / (half_w + 0.001) * 0.2
+				img.set_pixel(px, py, Color(ci, ci, ci, 0.95))
+	# Visor: glowing eyes
 	var visor_y := int(head_cy + 1)
-	for px in range(int(cx - 4), int(cx + 5)):
-		if px >= 0 and px < size and visor_y >= 0 and visor_y < size:
-			img.set_pixel(px, visor_y, Color(0.2, 0.2, 0.2, 1.0))
-	# Shoulder pauldrons
+	for side_offset: int in [-3, 3]:
+		var eye_x: int = int(cx) + side_offset
+		for edy in range(-1, 2):
+			for edx in range(-1, 2):
+				var px: int = eye_x + edx
+				var py: int = visor_y + edy
+				if px >= 0 and px < size and py >= 0 and py < size:
+					var ed := sqrt(float(edx * edx + edy * edy))
+					if ed <= 1.5:
+						img.set_pixel(px, py, Color(0.08, 0.08, 0.08, 1.0))
+	# Eye glow (bright dots at center of each eye)
+	for side_offset: int in [-3, 3]:
+		var ex := int(cx) + side_offset
+		if ex >= 0 and ex < size and visor_y >= 0 and visor_y < size:
+			img.set_pixel(ex, visor_y, Color(0.7, 0.7, 0.7, 1.0))
+	# Shoulder pauldrons with spike accents
 	var sides: Array[float] = [-1.0, 1.0]
 	for side in sides:
-		var shoulder_cx := cx + side * (r_body * 0.75)
+		var shoulder_cx := cx + side * (r_body * 0.82)
 		var shoulder_cy := cy - size * 0.08
-		var shoulder_r := size * 0.10
+		var shoulder_r := size * 0.13
 		for y in size:
 			for x in size:
 				var dx := float(x) - shoulder_cx
 				var dy := float(y) - shoulder_cy
 				var d := sqrt(dx * dx + dy * dy)
 				if d <= shoulder_r:
-					img.set_pixel(x, y, Color(0.9, 0.9, 0.9, 1.0))
-	# Armor belt line across middle
-	var belt_y := int(cy + 2)
-	for px in range(int(cx - r_body * 0.6), int(cx + r_body * 0.6) + 1):
-		for py in range(belt_y - 1, belt_y + 1):
-			if px >= 0 and px < size and py >= 0 and py < size:
-				img.set_pixel(px, py, Color(0.55, 0.55, 0.55, 1.0))
-	# Center chest emblem (small bright diamond)
-	var emblem_y := int(cy - 3)
-	for dy in range(-2, 3):
-		for dx in range(-2, 3):
-			if absf(dx) + absf(dy) <= 2:
-				var px := int(cx) + dx
+					var si := 1.0 - (d / shoulder_r) * 0.20
+					img.set_pixel(x, y, Color(si, si, si, 1.0))
+				elif d <= shoulder_r + 1.5:
+					var fade := 1.0 - (d - shoulder_r) / 1.5
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, fade * 0.3))
+		# Double spikes on each shoulder
+		for spike_off in [0.0, 3.0]:
+			var spike_x := int(shoulder_cx + side * (2.0 + spike_off * 0.3))
+			for sy in range(int(shoulder_cy - shoulder_r - 4 + int(spike_off)), int(shoulder_cy - shoulder_r)):
+				if spike_x >= 0 and spike_x < size and sy >= 0 and sy < size:
+					img.set_pixel(spike_x, sy, Color(1.0, 1.0, 1.0, 0.85))
+	# Glowing chest emblem (diamond with energy core)
+	var emblem_y := int(cy - 1)
+	for dy in range(-4, 5):
+		for ddx in range(-4, 5):
+			if absf(ddx) + absf(dy) <= 4:
+				var px := int(cx) + ddx
 				var py := emblem_y + dy
 				if px >= 0 and px < size and py >= 0 and py < size:
-					img.set_pixel(px, py, Color(1.0, 1.0, 1.0, 0.9))
+					var ed := float(absf(ddx) + absf(dy)) / 4.0
+					var ei := 1.0 - ed * 0.25
+					img.set_pixel(px, py, Color(ei, ei, ei, 1.0))
+	# Emblem bright core
+	for dy in range(-1, 2):
+		for ddx in range(-1, 2):
+			var px := int(cx) + ddx
+			var py := emblem_y + dy
+			if px >= 0 and px < size and py >= 0 and py < size:
+				img.set_pixel(px, py, Color(1.0, 1.0, 1.0, 1.0))
+	# Energy rune lines on torso (diagonal)
+	for ri in 3:
+		var ry_start := int(cy - 4 + ri * 5)
+		for s in 6:
+			var rx := int(cx - 5 + s * 2)
+			var ry := ry_start + s
+			if rx >= 0 and rx < size and ry >= 0 and ry < size:
+				var existing := img.get_pixel(rx, ry)
+				if existing.a > 0.5:
+					img.set_pixel(rx, ry, Color(minf(existing.r + 0.12, 1.0), minf(existing.g + 0.12, 1.0), minf(existing.b + 0.12, 1.0), 1.0))
+	# Sword on the right side with glow
+	var sword_x := int(cx + r_body * 0.58)
+	var sword_top := int(cy - size * 0.28)
+	var sword_bot := int(cy + size * 0.38)
+	for sy in range(sword_top, sword_bot + 1):
+		if sword_x >= 0 and sword_x < size and sy >= 0 and sy < size:
+			# Blade brightness varies along length
+			var blade_t := float(sy - sword_top) / float(sword_bot - sword_top)
+			var bi := 1.0 - blade_t * 0.15
+			img.set_pixel(sword_x, sy, Color(bi, bi, bi, 0.95))
+			if sword_x + 1 < size:
+				img.set_pixel(sword_x + 1, sy, Color(bi * 0.8, bi * 0.8, bi * 0.8, 0.45))
+			# Blade edge glow
+			if sword_x - 1 >= 0:
+				img.set_pixel(sword_x - 1, sy, Color(1.0, 1.0, 1.0, 0.15))
+	# Sword crossguard (wider)
+	var guard_y := int(cy - size * 0.04)
+	for gx in range(sword_x - 3, sword_x + 4):
+		if gx >= 0 and gx < size and guard_y >= 0 and guard_y < size:
+			var gd := absf(float(gx - sword_x)) / 3.0
+			img.set_pixel(gx, guard_y, Color(1.0 - gd * 0.15, 1.0 - gd * 0.15, 1.0 - gd * 0.15, 0.9))
+	# Sword pommel glow
+	if sword_x >= 0 and sword_x < size and sword_bot + 1 < size:
+		for pdx in range(-1, 2):
+			for pdy in range(0, 2):
+				var px := sword_x + pdx
+				var py := sword_bot + pdy
+				if px >= 0 and px < size and py >= 0 and py < size:
+					img.set_pixel(px, py, Color(0.9, 0.9, 0.9, 0.7))
 	return ImageTexture.create_from_image(img)
 
 static func _solid_tex(w: int, h: int, color: Color) -> ImageTexture:

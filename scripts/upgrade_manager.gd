@@ -39,9 +39,10 @@ func _show_upgrades(choices: Array) -> void:
 
 	# ── Centered panel ────────────────────────────────────────────────────────
 	var pw := minf(vp.x - 16.0, 460.0)
-	# Size to content: estimate height but cap it
-	var estimated_h := float(choices.size()) * 96.0 + 100.0
-	var ph := minf(estimated_h, vp.y - 80.0)
+	# Size to content with max = base height + 25%, then scroll
+	var content_h := float(choices.size()) * 96.0 + 100.0
+	var max_h := minf(content_h * 1.25, vp.y - 40.0)
+	var ph := minf(content_h, max_h)
 
 	var panel := PanelContainer.new()
 	panel.name     = "DynamicPanel"
@@ -77,6 +78,7 @@ func _show_upgrades(choices: Array) -> void:
 	scroll.size_flags_vertical   = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode   = ScrollContainer.SCROLL_MODE_AUTO
 	outer.add_child(scroll)
 
 	_card_vbox = VBoxContainer.new()
@@ -86,6 +88,17 @@ func _show_upgrades(choices: Array) -> void:
 
 	for upgrade in choices:
 		_card_vbox.add_child(_build_card(upgrade))
+
+	# Debug auto-pick button (only in debug builds)
+	if OS.is_debug_build():
+		var auto_btn := Button.new()
+		auto_btn.text = "⚡ AUTO PICK (debug)"
+		auto_btn.add_theme_font_size_override("font_size", 12)
+		auto_btn.modulate = Color(1.0, 1.0, 0.5, 0.7)
+		auto_btn.pressed.connect(func() -> void:
+			_on_select(choices[randi() % choices.size()])
+		)
+		outer.add_child(auto_btn)
 
 	show()
 

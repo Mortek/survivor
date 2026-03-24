@@ -46,7 +46,7 @@ func _build_panel() -> void:
 
 	# Title
 	var title := Label.new()
-	title.text                 = "META UPGRADES"
+	title.text                 = "UPGRADES"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 26)
 	outer.add_child(title)
@@ -66,10 +66,8 @@ func _build_panel() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical     = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode  = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode    = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	outer.add_child(scroll)
-
-	# Hide the scrollbar after it's created
-	scroll.get_v_scroll_bar().modulate = Color(1.0, 1.0, 1.0, 0.0)
 
 	var inner := VBoxContainer.new()
 	inner.add_theme_constant_override("separation", 6)

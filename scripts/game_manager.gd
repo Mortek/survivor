@@ -39,10 +39,6 @@ var _achieved:       Dictionary = {}
 var total_crits: int = 0
 var _corruption_counter: int = 0
 
-# ── Daily Challenge ───────────────────────────────────────────────────────────
-var daily_challenge_active: bool   = false
-var daily_challenge_curse:  String = ""
-
 # ── Player Stats ──────────────────────────────────────────────────────────────
 var stats: Dictionary = {
 	"max_health":         100,

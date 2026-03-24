@@ -137,9 +137,9 @@ func _build_ui() -> void:
 	play_btn.pressed.connect(_on_play)
 	root.add_child(play_btn)
 
-	# ── META UPGRADES button ──────────────────────────────────────────────────────
+	# ── UPGRADES button ───────────────────────────────────────────────────────────
 	var meta_btn := Button.new()
-	meta_btn.text                = "META UPGRADES"
+	meta_btn.text                = "UPGRADES"
 	meta_btn.add_theme_font_size_override("font_size", 20)
 	meta_btn.position            = Vector2(CX - 120.0, 508.0)
 	meta_btn.size                = Vector2(240.0, 54.0)
@@ -154,15 +154,6 @@ func _build_ui() -> void:
 	settings_btn.size                = Vector2(240.0, 54.0)
 	settings_btn.pressed.connect(_on_settings)
 	root.add_child(settings_btn)
-
-	# ── DAILY CHALLENGE button ─────────────────────────────────────────────────
-	var daily_btn := Button.new()
-	daily_btn.text                = "DAILY CHALLENGE"
-	daily_btn.add_theme_font_size_override("font_size", 18)
-	daily_btn.position            = Vector2(CX - 120.0, 640.0)
-	daily_btn.size                = Vector2(240.0, 54.0)
-	daily_btn.pressed.connect(_on_daily_challenge)
-	root.add_child(daily_btn)
 
 	# ── Tip ─────────────────────────────────────────────────────────────────────
 	var tip := Label.new()
@@ -213,12 +204,12 @@ func _build_settings_overlay() -> Control:
 	root.add_child(bg)
 
 	var pw := 360.0
-	var ph := 260.0
+	var ph := 210.0
 	var panel := PanelContainer.new()
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.10, 0.10, 0.16, 0.95)
 	panel_style.set_corner_radius_all(14)
-	panel_style.set_content_margin_all(20)
+	panel_style.set_content_margin_all(16)
 	panel_style.border_color = Color(0.3, 0.35, 0.5, 0.3)
 	panel_style.set_border_width_all(1)
 	panel.add_theme_stylebox_override("panel", panel_style)
@@ -281,140 +272,6 @@ func _build_settings_overlay() -> Control:
 
 	# Apply saved volume
 	AudioServer.set_bus_volume_db(0, linear_to_db(_load_setting("volume", 0.8)))
-
-	return root
-
-func _on_daily_challenge() -> void:
-	var date := Time.get_date_dict_from_system()
-	var seed_val: int = int(date["year"]) * 10000 + int(date["month"]) * 100 + int(date["day"])
-	var curse_names: Array[String] = ["Glass Cannon", "Blood Price", "Berserker Pact",
-		"Chaos Form", "Iron Burden", "Cursed Knowledge",
-		"Giant Form", "Time Warp", "Wraith Pact", "Corruption"]
-	var idx: int = seed_val % curse_names.size()
-	var curse_name: String = curse_names[idx]
-	var popup := _build_challenge_popup(curse_name)
-	_ui_layer.add_child(popup)
-
-func _build_challenge_popup(curse_name: String) -> Control:
-	# Look up full curse data from the pool
-	var curse_data: Dictionary = {}
-	for c in GameManager._curse_pool:
-		if c["name"] == curse_name:
-			curse_data = c
-			break
-
-	var vp   := Vector2(540.0, 960.0)
-	var root := Control.new()
-	root.position = Vector2.ZERO
-	root.size     = vp
-	root.process_mode = Node.PROCESS_MODE_ALWAYS
-
-	var bg := ColorRect.new()
-	bg.color        = Color(0, 0, 0, 0.80)
-	bg.position     = Vector2.ZERO
-	bg.size         = vp
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP
-	root.add_child(bg)
-
-	var pw := 380.0
-	var panel := PanelContainer.new()
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.10, 0.10, 0.16, 0.95)
-	panel_style.set_corner_radius_all(14)
-	panel_style.set_content_margin_all(22)
-	panel_style.border_color = Color(0.3, 0.35, 0.5, 0.3)
-	panel_style.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", panel_style)
-	var ph := 380.0
-	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
-	panel.size     = Vector2(pw, ph)
-	root.add_child(panel)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 14)
-	panel.add_child(vbox)
-
-	var title := Label.new()
-	title.text                 = "DAILY CHALLENGE"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 22)
-	title.modulate             = Color(1.0, 0.9, 0.2)
-	vbox.add_child(title)
-
-	vbox.add_child(HSeparator.new())
-
-	# Curse name in styled card
-	var curse_card := PanelContainer.new()
-	var card_style := StyleBoxFlat.new()
-	card_style.bg_color = Color(0.15, 0.12, 0.08, 0.8)
-	card_style.set_corner_radius_all(10)
-	card_style.set_content_margin_all(14)
-	curse_card.add_theme_stylebox_override("panel", card_style)
-	vbox.add_child(curse_card)
-
-	var curse_info := VBoxContainer.new()
-	curse_info.add_theme_constant_override("separation", 8)
-	curse_card.add_child(curse_info)
-
-	var name_lbl := Label.new()
-	name_lbl.text                 = curse_name
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.add_theme_font_size_override("font_size", 20)
-	name_lbl.modulate             = Color(1.0, 0.45, 0.1)
-	curse_info.add_child(name_lbl)
-
-	if not curse_data.is_empty():
-		var effect_lbl := Label.new()
-		effect_lbl.text                 = curse_data.get("desc", "")
-		effect_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		effect_lbl.add_theme_font_size_override("font_size", 14)
-		effect_lbl.modulate             = Color(0.9, 0.9, 0.9)
-		effect_lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-		curse_info.add_child(effect_lbl)
-
-		curse_info.add_child(HSeparator.new())
-
-		var reward_lbl := Label.new()
-		reward_lbl.text                 = "Reward: " + curse_data.get("reward", "")
-		reward_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		reward_lbl.add_theme_font_size_override("font_size", 15)
-		reward_lbl.modulate             = Color(0.3, 1.0, 0.5)
-		reward_lbl.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-		curse_info.add_child(reward_lbl)
-
-	vbox.add_child(HSeparator.new())
-
-	var sub := Label.new()
-	sub.text                 = "Curse is active from run start.\nWave 10 to prove yourself, Wave 20 to master it."
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 12)
-	sub.modulate             = Color(0.55, 0.55, 0.65)
-	sub.autowrap_mode        = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(sub)
-
-	var btn_row := HBoxContainer.new()
-	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	btn_row.add_theme_constant_override("separation", 16)
-	vbox.add_child(btn_row)
-
-	var play_btn := Button.new()
-	play_btn.text = "PLAY CHALLENGE"
-	play_btn.add_theme_font_size_override("font_size", 18)
-	play_btn.pressed.connect(func() -> void:
-		GameManager.daily_challenge_active = true
-		GameManager.daily_challenge_curse  = curse_name
-		get_tree().change_scene_to_file("res://scenes/game.tscn")
-	)
-	btn_row.add_child(play_btn)
-
-	# X close button — top right of panel
-	var close_x := Button.new()
-	close_x.text = "✕"
-	close_x.add_theme_font_size_override("font_size", 16)
-	close_x.custom_minimum_size = Vector2(32, 28)
-	close_x.position = Vector2(panel.position.x + pw - 40.0, panel.position.y + 6.0)
-	close_x.pressed.connect(root.queue_free)
-	root.add_child(close_x)
 
 	return root
 

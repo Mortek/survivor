@@ -225,23 +225,6 @@ func _ready() -> void:
 	player.health_changed.connect(_on_player_health_changed)
 	_prev_player_hp = GameManager.stats["max_health"]
 
-	# ── Daily challenge: auto-apply today's curse ──
-	if GameManager.daily_challenge_active:
-		GameManager.daily_challenge_active = false
-		var curse_id_map := {
-			"Glass Cannon": "glass_cannon", "Blood Price": "blood_price",
-			"Berserker Pact": "berserker", "Chaos Form": "chaos_form",
-			"Iron Burden": "iron_burden", "Cursed Knowledge": "cursed_xp",
-			"Giant Form": "giant_form", "Time Warp": "time_warp",
-			"Wraith Pact": "wraith_pact", "Corruption": "corruption",
-		}
-		var cid: String = curse_id_map.get(GameManager.daily_challenge_curse, "")
-		if not cid.is_empty():
-			for curse in GameManager._curse_pool:
-				if curse["id"] == cid:
-					GameManager.accept_curse(curse)
-					break
-
 	# ── Animated game background ──
 	_build_game_background()
 
@@ -534,7 +517,7 @@ func _on_enemy_died(world_pos: Vector2, xp: int, color: Color, type: int, hit_di
 	call_deferred("_spawn_death_particles", world_pos, color, splash_dir)
 	# Bonus coin drop chance (Lucky Breaks meta upgrade)
 	var extra_drop: float = GameManager.stats.get("lucky_drop_chance", 0.0)
-	if randf() < 0.01 + GameManager.stats.get("magnet_orb_bonus", 0.0):
+	if randf() < 0.01 + extra_drop + GameManager.stats.get("magnet_orb_bonus", 0.0):
 		call_deferred("_spawn_magnet_orb", world_pos)
 	GameManager.add_kill()
 	player.on_kill()
@@ -581,10 +564,12 @@ func _create_boss_hp_bar(boss: Node) -> void:
 	_boss_hp_container = Control.new()
 	_boss_hp_container.z_index      = 15
 	_boss_hp_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_boss_hp_container.set_anchor_and_offset(SIDE_LEFT,   0.05, 0.0)
-	_boss_hp_container.set_anchor_and_offset(SIDE_TOP,    1.0, -42.0)
-	_boss_hp_container.set_anchor_and_offset(SIDE_RIGHT,  0.95, 0.0)
+	# Centered narrow bar above the XP bar
+	_boss_hp_container.set_anchor_and_offset(SIDE_LEFT,   0.15, 0.0)
+	_boss_hp_container.set_anchor_and_offset(SIDE_TOP,    1.0, -44.0)
+	_boss_hp_container.set_anchor_and_offset(SIDE_RIGHT,  0.85, 0.0)
 	_boss_hp_container.set_anchor_and_offset(SIDE_BOTTOM, 1.0, -22.0)
+	_boss_hp_container.modulate.a = 0.0
 
 	_boss_hp_bar = ProgressBar.new()
 	_boss_hp_bar.max_value       = 100
@@ -592,20 +577,29 @@ func _create_boss_hp_bar(boss: Node) -> void:
 	_boss_hp_bar.show_percentage = false
 	_boss_hp_bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(0.85, 0.1, 0.1)
+	fill.bg_color = Color(0.85, 0.1, 0.15)
+	fill.set_corner_radius_all(4)
 	_boss_hp_bar.add_theme_stylebox_override("fill", fill)
+	var bg_style := StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.15, 0.05, 0.05, 0.8)
+	bg_style.set_corner_radius_all(4)
+	_boss_hp_bar.add_theme_stylebox_override("background", bg_style)
 	_boss_hp_container.add_child(_boss_hp_bar)
 
 	var lbl := Label.new()
-	lbl.text                 = "💀 BOSS"
-	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.text                 = "BOSS"
+	lbl.add_theme_font_size_override("font_size", 10)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
+	lbl.modulate             = Color(1.0, 0.9, 0.9)
 	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_boss_hp_container.add_child(lbl)
 
 	ui.add_child(_boss_hp_container)
+	# Fade in smoothly
+	var tw_in := _boss_hp_container.create_tween()
+	tw_in.tween_property(_boss_hp_container, "modulate:a", 1.0, 0.4)
 
 	var e := boss as Enemy
 	if e:
@@ -775,9 +769,54 @@ func _on_wave_changed(w: int) -> void:
 	_show_wave_banner(text, color)
 
 func _on_boss_wave(_wave: int) -> void:
-	_do_flash(Color(1.0, 0.1, 0.1, 0.5), 0.6)
+	_boss_edge_warning()
 	if _audio:
 		_audio.play_any("boss_music")
+
+func _boss_edge_warning() -> void:
+	var vp := get_viewport_rect().size
+	# Pulsing red/magenta border strips on all 4 edges
+	var border_thickness := 6.0
+	var edges: Array[Dictionary] = [
+		{"pos": Vector2.ZERO, "size": Vector2(vp.x, border_thickness)},              # top
+		{"pos": Vector2(0, vp.y - border_thickness), "size": Vector2(vp.x, border_thickness)},  # bottom
+		{"pos": Vector2.ZERO, "size": Vector2(border_thickness, vp.y)},              # left
+		{"pos": Vector2(vp.x - border_thickness, 0), "size": Vector2(border_thickness, vp.y)},  # right
+	]
+	for edge in edges:
+		var bar := ColorRect.new()
+		bar.position     = edge["pos"]
+		bar.size         = edge["size"]
+		bar.color        = Color(1.0, 0.1, 0.2, 0.0)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.z_index      = 22
+		ui.add_child(bar)
+		var tw := bar.create_tween()
+		# 3 dramatic pulses
+		for _i in 3:
+			tw.tween_property(bar, "color:a", 0.85, 0.12).set_trans(Tween.TRANS_CUBIC)
+			tw.tween_property(bar, "color:a", 0.15, 0.18).set_trans(Tween.TRANS_CUBIC)
+		tw.tween_property(bar, "color:a", 0.0, 0.2)
+		tw.tween_callback(bar.queue_free)
+
+	# Dramatic "WARNING" text
+	var warn_lbl := Label.new()
+	warn_lbl.text                 = "⚠  BOSS INCOMING  ⚠"
+	warn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	warn_lbl.add_theme_font_size_override("font_size", 28)
+	warn_lbl.modulate             = Color(1.0, 0.15, 0.25, 0.0)
+	warn_lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
+	warn_lbl.z_index              = 23
+	warn_lbl.size                 = Vector2(vp.x, 40.0)
+	warn_lbl.position             = Vector2(0, vp.y * 0.38)
+	ui.add_child(warn_lbl)
+	var tw_lbl := warn_lbl.create_tween()
+	tw_lbl.tween_property(warn_lbl, "modulate:a", 1.0, 0.15)
+	tw_lbl.tween_property(warn_lbl, "scale", Vector2(1.08, 1.08), 0.3).set_trans(Tween.TRANS_SINE)
+	tw_lbl.tween_property(warn_lbl, "scale", Vector2(1.0, 1.0), 0.3).set_trans(Tween.TRANS_SINE)
+	tw_lbl.tween_interval(0.6)
+	tw_lbl.tween_property(warn_lbl, "modulate:a", 0.0, 0.4)
+	tw_lbl.tween_callback(warn_lbl.queue_free)
 
 # ── Screen Flashes ────────────────────────────────────────────────────────────
 func _on_upgrade_available_flash(_choices) -> void:
@@ -861,9 +900,6 @@ func _spawn_magnet_orb(world_pos: Vector2) -> void:
 	visual.queue_redraw()
 	particle_timer.start()
 
-	for coin in coins_node.get_children():
-		coin.attract_magnet()
-
 	orb.body_entered.connect(func(body: Node) -> void:
 		if not body.is_in_group("player"):
 			return
@@ -871,6 +907,10 @@ func _spawn_magnet_orb(world_pos: Vector2) -> void:
 		if _audio:
 			_audio.play_any("coin_attract")
 		orb.queue_free()
+		# Pull ALL XP orbs on the entire level toward the player
+		for coin in coins_node.get_children():
+			if coin.has_method("attract_magnet"):
+				coin.attract_magnet()
 		# Zoom out camera gently
 		if camera:
 			var tw_zoom := camera.create_tween()
@@ -1157,10 +1197,17 @@ func _position_dash_btn() -> void:
 func _build_settings_button() -> void:
 	var btn := Button.new()
 	btn.text = "⚙"
-	btn.add_theme_font_size_override("font_size", 18)
+	btn.add_theme_font_size_override("font_size", 20)
 	btn.custom_minimum_size = Vector2(36, 26)
 	btn.process_mode = Node.PROCESS_MODE_ALWAYS
-	btn.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	# Flat transparent background so the icon reads pure white
+	var flat := StyleBoxFlat.new()
+	flat.bg_color = Color.TRANSPARENT
+	flat.set_content_margin_all(0)
+	for state in ["normal", "hover", "pressed", "focus"]:
+		btn.add_theme_stylebox_override(state, flat)
+	btn.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0))
+	btn.add_theme_color_override("font_hover_color", Color(0.7, 0.9, 1.0, 1.0))
 	btn.pressed.connect(_open_settings)
 	_settings_btn_ref = btn
 	$UI/HUD.add_child(btn)
@@ -1194,22 +1241,40 @@ func _build_settings_overlay() -> Control:
 	root.add_child(bg)
 
 	var pw := minf(vp.x - 16.0, 380.0)
-	var ph := 320.0
+	var ph := 210.0
 	var panel := PanelContainer.new()
-	_styled_panel(panel, 20)
+	_styled_panel(panel, 16)
 	panel.position = Vector2((vp.x - pw) * 0.5, (vp.y - ph) * 0.5)
 	panel.size     = Vector2(pw, ph)
 	root.add_child(panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 10)
 	panel.add_child(vbox)
 
+	# Title row with close X in the top-right
+	var title_row := HBoxContainer.new()
+	vbox.add_child(title_row)
 	var title := Label.new()
 	title.text                 = "SETTINGS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 22)
-	vbox.add_child(title)
+	title_row.add_child(title)
+
+	var close_x := Button.new()
+	close_x.text = "✕"
+	close_x.process_mode = Node.PROCESS_MODE_ALWAYS
+	close_x.add_theme_font_size_override("font_size", 16)
+	close_x.custom_minimum_size = Vector2(30, 28)
+	close_x.pressed.connect(func() -> void:
+		root.queue_free()
+		_settings_overlay = null
+		if GameManager.state == GameManager.State.PAUSED:
+			GameManager.state = GameManager.State.PLAYING
+			get_tree().paused = false
+	)
+	title_row.add_child(close_x)
 
 	# Master volume
 	vbox.add_child(_make_volume_row("Volume", func(v: float) -> void:
@@ -1251,7 +1316,7 @@ func _build_settings_overlay() -> Control:
 	vbox.add_child(HSeparator.new())
 
 	var menu_btn := Button.new()
-	menu_btn.text = "⬅  MAIN MENU"
+	menu_btn.text = "MAIN MENU"
 	menu_btn.add_theme_font_size_override("font_size", 16)
 	menu_btn.pressed.connect(func() -> void:
 		_show_quit_confirm(ui)
@@ -1261,23 +1326,6 @@ func _build_settings_overlay() -> Control:
 	# Apply saved volume on open
 	var saved_vol := _load_setting("volume", 0.8)
 	AudioServer.set_bus_volume_db(0, linear_to_db(saved_vol))
-
-	# X close button — top-right of panel
-	var close_x := Button.new()
-	close_x.text = "✕"
-	close_x.process_mode = Node.PROCESS_MODE_ALWAYS
-	close_x.add_theme_font_size_override("font_size", 16)
-	close_x.custom_minimum_size = Vector2(30, 28)
-	close_x.z_index = 30
-	close_x.position = Vector2(panel.position.x + pw - 38.0, panel.position.y + 4.0)
-	close_x.pressed.connect(func() -> void:
-		root.queue_free()
-		_settings_overlay = null
-		if GameManager.state == GameManager.State.PAUSED:
-			GameManager.state = GameManager.State.PLAYING
-			get_tree().paused = false
-	)
-	root.add_child(close_x)
 
 	return root
 
@@ -1422,13 +1470,14 @@ func _build_indicator_layer() -> void:
 		tw.tween_property(arrow, "modulate:a", 0.55, 0.5).set_trans(Tween.TRANS_SINE)
 
 func _create_indicator_arrow() -> Node2D:
-	# Small triangle arrow pointing right (rotated to face enemy direction)
+	# Triangle arrow pointing right (rotated to face enemy direction)
 	var arrow := Node2D.new()
 	arrow.visible = false
 	arrow.set_meta("ind_color", Color.WHITE)
+	arrow.set_meta("ind_boss", false)
 	arrow.connect("draw", func() -> void:
 		var col: Color = arrow.get_meta("ind_color", Color.WHITE)
-		# Small triangle: 8px long, 6px wide
+		var is_boss: bool = arrow.get_meta("ind_boss", false)
 		var pts := PackedVector2Array([
 			Vector2(5, 0),    # tip
 			Vector2(-3, -4),  # top-left
@@ -1438,6 +1487,10 @@ func _create_indicator_arrow() -> Node2D:
 		# Glow outline
 		arrow.draw_polyline(PackedVector2Array([pts[1], pts[0], pts[2]]),
 			Color(col.r, col.g, col.b, 0.3), 2.0, true)
+		if is_boss:
+			# Outer glow ring for boss
+			arrow.draw_arc(Vector2.ZERO, 7.0, 0.0, TAU, 16,
+				Color(col.r, col.g, col.b, 0.4), 1.5)
 	)
 	return arrow
 
@@ -1469,7 +1522,8 @@ func _update_edge_indicators() -> void:
 		var sy       := (vp.y * 0.5 - MARGIN) / maxf(absf(dir.y), 0.01)
 		var edge_pos := center + dir * minf(sx, sy)
 		var col: Color
-		if e.enemy_type == Enemy.Type.BOSS:
+		var is_boss := e.enemy_type == Enemy.Type.BOSS
+		if is_boss:
 			col = Color(1.0, 0.2, 1.0)
 		elif e.is_elite:
 			col = Color(1.0, 0.75, 0.2)
@@ -1477,8 +1531,10 @@ func _update_edge_indicators() -> void:
 			col = Color(1.0, 0.4, 0.4)
 		var arrow := _indicator_nodes[slot] as Node2D
 		arrow.set_meta("ind_color", col)
+		arrow.set_meta("ind_boss", is_boss)
 		arrow.position = edge_pos
 		arrow.rotation = dir.angle()
+		arrow.scale = Vector2(2.5, 2.5) if is_boss else Vector2(1.0, 1.0)
 		arrow.visible  = true
 		arrow.queue_redraw()
 		slot += 1
@@ -1516,16 +1572,20 @@ func _notification(what: int) -> void:
 
 # ── Boss Intro Animation ──────────────────────────────────────────────────────
 func _play_boss_intro(boss: Node) -> void:
-	# Scale-in: boss starts tiny, grows to normal size
+	# Scale-in: boss starts tiny, grows to normal size with overshoot
 	var sprite := boss.get_node_or_null("Sprite2D") as Node2D
 	if sprite:
-		sprite.scale = Vector2(0.1, 0.1)
+		sprite.scale = Vector2(0.05, 0.05)
+		sprite.modulate.a = 0.0
 		var tw := boss.create_tween()
-		tw.tween_property(sprite, "scale", Vector2(2.5, 2.5), 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
-	# Screen shake + red flash
+		tw.set_parallel(true)
+		tw.tween_property(sprite, "scale", Vector2(2.0, 2.0), 0.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+		tw.tween_property(sprite, "modulate:a", 1.0, 0.3)
+	# Strong screen shake
 	if camera and camera.has_method("add_trauma"):
-		camera.add_trauma(0.5)
-	_do_flash(Color(0.8, 0.0, 0.0, 0.4), 0.5)
+		camera.add_trauma(0.6)
+	# Brief white flash instead of red fill
+	_do_flash(Color(1.0, 1.0, 1.0, 0.35), 0.25)
 	if _audio:
 		_audio.play_any("boss_intro")
 
@@ -1587,7 +1647,7 @@ func _add_meta_shop_button() -> void:
 		return
 	var btn := Button.new()
 	btn.name = "MetaShopBtn"
-	btn.text = "⚡  META UPGRADES"
+	btn.text = "⚡  UPGRADES"
 	btn.add_theme_font_size_override("font_size", 16)
 	vbox.add_child(btn)
 	vbox.move_child(btn, restart_btn.get_index())
