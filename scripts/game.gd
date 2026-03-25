@@ -29,7 +29,6 @@ var _go_best_label:  Label = null
 
 # ── Level-up / boss screen flash ──────────────────────────────────────────────
 var _level_flash: ColorRect = null
-var _flash_tween: Tween    = null
 
 # ── Dev speed button ──────────────────────────────────────────────────────────
 var _speed_btn:   Button = null
@@ -622,11 +621,10 @@ func _create_boss_hp_bar(boss: Node) -> void:
 
 # ── Boss Death Hitpause ───────────────────────────────────────────────────────
 func _boss_death_hitpause() -> void:
-	Engine.time_scale = 0.04
-	_do_flash(Color(1.0, 1.0, 1.0, 0.6), 0.5)
+	Engine.time_scale = 0.15
 	if camera and camera.has_method("add_trauma"):
 		camera.add_trauma(0.8)
-	await get_tree().create_timer(0.1, true, false, true).timeout   # real-time timer
+	await get_tree().create_timer(0.25, true, false, true).timeout   # real-time timer
 	Engine.time_scale = float(_SPEEDS[_speed_index])
 
 # ── Shield Broken ─────────────────────────────────────────────────────────────
@@ -779,46 +777,89 @@ func _on_boss_wave(_wave: int) -> void:
 
 func _boss_edge_warning() -> void:
 	var vp := get_viewport_rect().size
-	# Pulsing red/magenta border strips on all 4 edges
-	var border_thickness := 6.0
-	var edges: Array[Dictionary] = [
-		{"pos": Vector2.ZERO, "size": Vector2(vp.x, border_thickness)},              # top
-		{"pos": Vector2(0, vp.y - border_thickness), "size": Vector2(vp.x, border_thickness)},  # bottom
-		{"pos": Vector2.ZERO, "size": Vector2(border_thickness, vp.y)},              # left
-		{"pos": Vector2(vp.x - border_thickness, 0), "size": Vector2(border_thickness, vp.y)},  # right
-	]
-	for edge in edges:
+	var mid_y := vp.y * 0.40
+
+	# ── Cinematic dark overlay ──
+	var overlay := ColorRect.new()
+	overlay.position      = Vector2.ZERO
+	overlay.size          = vp
+	overlay.color         = Color(0.0, 0.0, 0.0, 0.0)
+	overlay.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	overlay.z_index       = 21
+	ui.add_child(overlay)
+	var tw_ov := overlay.create_tween()
+	tw_ov.tween_property(overlay, "color:a", 0.35, 0.2).set_trans(Tween.TRANS_QUAD)
+	tw_ov.tween_interval(1.2)
+	tw_ov.tween_property(overlay, "color:a", 0.0, 0.4)
+	tw_ov.tween_callback(overlay.queue_free)
+
+	# ── Cinematic letterbox bars (top + bottom) ──
+	var bar_h := 32.0
+	for y_pos in [0.0, vp.y - bar_h]:
 		var bar := ColorRect.new()
-		bar.position     = edge["pos"]
-		bar.size         = edge["size"]
-		bar.color        = Color(1.0, 0.1, 0.2, 0.0)
-		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		bar.z_index      = 22
+		bar.position      = Vector2(0, y_pos)
+		bar.size          = Vector2(vp.x, bar_h)
+		bar.color         = Color(0.0, 0.0, 0.0, 0.0)
+		bar.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+		bar.z_index       = 22
 		ui.add_child(bar)
 		var tw := bar.create_tween()
-		# 3 dramatic pulses
-		for _i in 3:
-			tw.tween_property(bar, "color:a", 0.85, 0.12).set_trans(Tween.TRANS_CUBIC)
-			tw.tween_property(bar, "color:a", 0.15, 0.18).set_trans(Tween.TRANS_CUBIC)
-		tw.tween_property(bar, "color:a", 0.0, 0.2)
+		tw.tween_property(bar, "color:a", 0.9, 0.18).set_trans(Tween.TRANS_QUAD)
+		tw.tween_interval(1.2)
+		tw.tween_property(bar, "color:a", 0.0, 0.35)
 		tw.tween_callback(bar.queue_free)
 
-	# Dramatic "WARNING" text
+	# ── Red accent lines sweep from edges to center ──
+	var line_h := 2.0
+	# Left half sweeps in from off-screen left
+	var line_l := ColorRect.new()
+	line_l.position      = Vector2(-vp.x * 0.5, mid_y - line_h * 0.5)
+	line_l.size          = Vector2(vp.x * 0.5, line_h)
+	line_l.color         = Color(1.0, 0.12, 0.22, 0.9)
+	line_l.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	line_l.z_index       = 23
+	ui.add_child(line_l)
+	var tw_ll := line_l.create_tween()
+	tw_ll.tween_property(line_l, "position:x", 0.0, 0.22).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw_ll.tween_interval(1.0)
+	tw_ll.tween_property(line_l, "color:a", 0.0, 0.35)
+	tw_ll.tween_callback(line_l.queue_free)
+	# Right half sweeps in from off-screen right
+	var line_r := ColorRect.new()
+	line_r.position      = Vector2(vp.x, mid_y - line_h * 0.5)
+	line_r.size          = Vector2(vp.x * 0.5, line_h)
+	line_r.color         = Color(1.0, 0.12, 0.22, 0.9)
+	line_r.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	line_r.z_index       = 23
+	ui.add_child(line_r)
+	var tw_lr := line_r.create_tween()
+	tw_lr.tween_property(line_r, "position:x", vp.x * 0.5, 0.22).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw_lr.tween_interval(1.0)
+	tw_lr.tween_property(line_r, "color:a", 0.0, 0.35)
+	tw_lr.tween_callback(line_r.queue_free)
+
+	# ── "BOSS INCOMING" label — centered with proper pivot ──
 	var warn_lbl := Label.new()
 	warn_lbl.text                 = "⚠  BOSS INCOMING  ⚠"
 	warn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	warn_lbl.add_theme_font_size_override("font_size", 28)
+	warn_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	warn_lbl.add_theme_font_size_override("font_size", 22)
 	warn_lbl.modulate             = Color(1.0, 0.15, 0.25, 0.0)
 	warn_lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
-	warn_lbl.z_index              = 23
-	warn_lbl.size                 = Vector2(vp.x, 40.0)
-	warn_lbl.position             = Vector2(0, vp.y * 0.38)
+	warn_lbl.z_index              = 24
+	var lbl_w := 300.0
+	var lbl_h := 36.0
+	warn_lbl.size                 = Vector2(lbl_w, lbl_h)
+	warn_lbl.position             = Vector2((vp.x - lbl_w) * 0.5, mid_y - lbl_h * 0.5)
+	warn_lbl.pivot_offset         = Vector2(lbl_w * 0.5, lbl_h * 0.5)
+	warn_lbl.scale                = Vector2(1.6, 1.6)
 	ui.add_child(warn_lbl)
 	var tw_lbl := warn_lbl.create_tween()
-	tw_lbl.tween_property(warn_lbl, "modulate:a", 1.0, 0.15)
-	tw_lbl.tween_property(warn_lbl, "scale", Vector2(1.08, 1.08), 0.3).set_trans(Tween.TRANS_SINE)
-	tw_lbl.tween_property(warn_lbl, "scale", Vector2(1.0, 1.0), 0.3).set_trans(Tween.TRANS_SINE)
-	tw_lbl.tween_interval(0.6)
+	tw_lbl.set_parallel(true)
+	tw_lbl.tween_property(warn_lbl, "modulate:a", 1.0, 0.18)
+	tw_lbl.tween_property(warn_lbl, "scale", Vector2(1.0, 1.0), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw_lbl.set_parallel(false)
+	tw_lbl.tween_interval(0.8)
 	tw_lbl.tween_property(warn_lbl, "modulate:a", 0.0, 0.4)
 	tw_lbl.tween_callback(warn_lbl.queue_free)
 

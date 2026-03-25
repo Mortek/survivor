@@ -1123,8 +1123,8 @@ static func _shield_hex_tex(size: int) -> ImageTexture:
 			var dy := float(y) - cy
 			var d := sqrt(dx * dx + dy * dy)
 			if d <= body_r:
-				var norm_d := d / body_r
-				var angle := atan2(dy, dx)
+				var _norm_d := d / body_r
+				var _angle := atan2(dy, dx)
 				# Alien body — organic with slight elongation
 				var stretch := sqrt(dx * dx * 0.8 + dy * dy * 1.2) / body_r
 				if stretch > 1.0:
@@ -1229,7 +1229,7 @@ static func _cross_plus_tex(size: int) -> ImageTexture:
 			var dx := float(x) - fcx
 			var dy := float(y) - fcx
 			var dist_from_center := sqrt(dx * dx + dy * dy)
-			var norm_dist := dist_from_center / float(arm_len)
+			var _norm_dist := dist_from_center / float(arm_len)
 			var edge_d: float = _cross_edge_dist(x, y, cx, arm_w, arm_len)
 			# Bell dome (upper arm) — brighter, dome-like shading
 			var is_upper := y < cx
