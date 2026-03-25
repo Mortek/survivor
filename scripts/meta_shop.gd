@@ -10,6 +10,7 @@ var _buy_buttons: Array = []   # Array of [Button, Dictionary] — refreshed on 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	z_index = 50
 	# Fill the CanvasLayer so mouse blocking works
 	var vp := get_viewport_rect().size
 	position = Vector2.ZERO

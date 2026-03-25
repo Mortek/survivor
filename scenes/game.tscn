@@ -242,14 +242,14 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -190.0
-offset_top = -170.0
-offset_right = 190.0
-offset_bottom = 170.0
+offset_left = -210.0
+offset_top = -240.0
+offset_right = 210.0
+offset_bottom = 240.0
 
 [node name="VBox" type="VBoxContainer" parent="UI/GameOverScreen/Panel"]
 alignment = 1
-theme_override_constants/separation = 18
+theme_override_constants/separation = 10
 
 [node name="GameOverLabel" type="Label" parent="UI/GameOverScreen/Panel/VBox"]
 horizontal_alignment = 1
@@ -267,6 +267,6 @@ text = "Level: 1"
 theme_override_font_sizes/font_size = 18
 
 [node name="RestartButton" type="Button" parent="UI/GameOverScreen/Panel/VBox"]
-custom_minimum_size = Vector2(160, 48)
+custom_minimum_size = Vector2(160, 44)
 text = "PLAY AGAIN"
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16

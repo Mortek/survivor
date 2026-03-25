@@ -154,6 +154,9 @@ func _ready() -> void:
 
 	game_over_screen.hide()
 
+	# ── Style game over screen ──
+	_style_game_over_screen()
+
 	# ── Build dynamic GO labels ──
 	_build_extra_go_labels()
 
@@ -285,6 +288,62 @@ func _on_speed_pressed() -> void:
 	Engine.time_scale = float(_SPEEDS[_speed_index])
 	GameManager.desired_time_scale = Engine.time_scale
 	_speed_btn.text   = str(_SPEEDS[_speed_index]) + "x"
+
+# ── Game Over Screen Styling ──────────────────────────────────────────────────
+func _style_game_over_screen() -> void:
+	var panel: PanelContainer = $UI/GameOverScreen/Panel
+	var vbox: VBoxContainer   = $UI/GameOverScreen/Panel/VBox
+
+	# Rounded panel with padding
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.08, 0.14, 0.95)
+	style.set_corner_radius_all(18)
+	style.set_content_margin_all(24)
+	style.border_color = Color(0.35, 0.35, 0.55, 0.35)
+	style.set_border_width_all(1)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.4)
+	style.shadow_size  = 8
+	panel.add_theme_stylebox_override("panel", style)
+
+	# Tighter label spacing, buttons get extra margin via container
+	vbox.add_theme_constant_override("separation", 10)
+
+	# Style the existing restart button
+	_style_go_button(restart_btn, Color(0.15, 0.55, 0.95))
+
+	# Home button — goes after restart
+	var home_btn := Button.new()
+	home_btn.name = "HomeBtn"
+	home_btn.text = "HOME"
+	home_btn.add_theme_font_size_override("font_size", 16)
+	home_btn.custom_minimum_size = Vector2(160, 44)
+	home_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	_style_go_button(home_btn, Color(0.45, 0.45, 0.55))
+	home_btn.pressed.connect(func() -> void:
+		Engine.time_scale = 1.0
+		get_tree().paused = false
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	)
+	vbox.add_child(home_btn)
+
+func _style_go_button(btn: Button, color: Color) -> void:
+	btn.custom_minimum_size = Vector2(160, 44)
+	btn.add_theme_font_size_override("font_size", 16)
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = color
+	normal.set_corner_radius_all(10)
+	normal.set_content_margin_all(8)
+	btn.add_theme_stylebox_override("normal", normal)
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = color.lightened(0.15)
+	hover.set_corner_radius_all(10)
+	hover.set_content_margin_all(8)
+	btn.add_theme_stylebox_override("hover", hover)
+	var pressed := StyleBoxFlat.new()
+	pressed.bg_color = color.darkened(0.15)
+	pressed.set_corner_radius_all(10)
+	pressed.set_content_margin_all(8)
+	btn.add_theme_stylebox_override("pressed", pressed)
 
 # ── Extra Game-Over Labels ────────────────────────────────────────────────────
 func _build_extra_go_labels() -> void:
@@ -564,21 +623,23 @@ func _spawn_split_children(world_pos: Vector2, wave_mult: float) -> void:
 func _create_boss_hp_bar(boss: Node) -> void:
 	if _boss_hp_container:
 		_boss_hp_container.queue_free()
+	var vp := get_viewport_rect().size
+	var bar_w := vp.x * 0.7
+	var bar_h := 22.0
+
 	_boss_hp_container = Control.new()
 	_boss_hp_container.z_index      = 15
 	_boss_hp_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Centered narrow bar above the XP bar
-	_boss_hp_container.set_anchor_and_offset(SIDE_LEFT,   0.15, 0.0)
-	_boss_hp_container.set_anchor_and_offset(SIDE_TOP,    1.0, -44.0)
-	_boss_hp_container.set_anchor_and_offset(SIDE_RIGHT,  0.85, 0.0)
-	_boss_hp_container.set_anchor_and_offset(SIDE_BOTTOM, 1.0, -22.0)
-	_boss_hp_container.modulate.a = 0.0
+	_boss_hp_container.position     = Vector2((vp.x - bar_w) * 0.5, vp.y - 44.0)
+	_boss_hp_container.size         = Vector2(bar_w, bar_h)
+	_boss_hp_container.modulate.a   = 0.0
 
 	_boss_hp_bar = ProgressBar.new()
 	_boss_hp_bar.max_value       = 100
 	_boss_hp_bar.value           = 100
 	_boss_hp_bar.show_percentage = false
-	_boss_hp_bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_boss_hp_bar.position        = Vector2.ZERO
+	_boss_hp_bar.size            = Vector2(bar_w, bar_h)
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = Color(0.85, 0.1, 0.15)
 	fill.set_corner_radius_all(4)
@@ -596,7 +657,8 @@ func _create_boss_hp_bar(boss: Node) -> void:
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
 	lbl.modulate             = Color(1.0, 0.9, 0.9)
-	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.position             = Vector2.ZERO
+	lbl.size                 = Vector2(bar_w, bar_h)
 	_boss_hp_container.add_child(lbl)
 
 	ui.add_child(_boss_hp_container)
@@ -644,7 +706,7 @@ func _on_curse_offered(options: Array) -> void:
 func _build_curse_dialog(options: Array) -> Control:
 	var vp  := get_viewport_rect().size
 	var pw  := minf(vp.x - 16.0, 440.0)
-	var ph  := minf(float(options.size()) * 96.0 + 160.0, vp.y - 40.0)
+	var ph  := minf(float(options.size()) * 130.0 + 160.0, vp.y - 20.0)
 
 	var root := Control.new()
 	root.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -687,6 +749,14 @@ func _build_curse_dialog(options: Array) -> Control:
 	scroll.size_flags_vertical    = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal  = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var vsb := scroll.get_v_scroll_bar()
+	var invis := StyleBoxEmpty.new()
+	vsb.add_theme_stylebox_override("grabber", invis)
+	vsb.add_theme_stylebox_override("grabber_highlight", invis)
+	vsb.add_theme_stylebox_override("grabber_pressed", invis)
+	vsb.add_theme_stylebox_override("scroll", invis)
+	vsb.add_theme_stylebox_override("scroll_focus", invis)
+	vsb.custom_minimum_size.x = 0
 	vbox.add_child(scroll)
 
 	var card_col := VBoxContainer.new()
@@ -777,90 +847,59 @@ func _on_boss_wave(_wave: int) -> void:
 
 func _boss_edge_warning() -> void:
 	var vp := get_viewport_rect().size
-	var mid_y := vp.y * 0.40
 
-	# ── Cinematic dark overlay ──
-	var overlay := ColorRect.new()
-	overlay.position      = Vector2.ZERO
-	overlay.size          = vp
-	overlay.color         = Color(0.0, 0.0, 0.0, 0.0)
-	overlay.mouse_filter  = Control.MOUSE_FILTER_IGNORE
-	overlay.z_index       = 21
-	ui.add_child(overlay)
-	var tw_ov := overlay.create_tween()
-	tw_ov.tween_property(overlay, "color:a", 0.35, 0.2).set_trans(Tween.TRANS_QUAD)
-	tw_ov.tween_interval(1.2)
-	tw_ov.tween_property(overlay, "color:a", 0.0, 0.4)
-	tw_ov.tween_callback(overlay.queue_free)
+	# ── Compact banner background ──
+	var banner_h := 36.0
+	var banner_y := vp.y * 0.18
+	var banner := ColorRect.new()
+	banner.position      = Vector2(0, banner_y)
+	banner.size          = Vector2(vp.x, banner_h)
+	banner.color         = Color(0.0, 0.0, 0.0, 0.0)
+	banner.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+	banner.z_index       = 22
+	ui.add_child(banner)
+	var tw_bg := banner.create_tween()
+	tw_bg.tween_property(banner, "color:a", 0.55, 0.15).set_trans(Tween.TRANS_QUAD)
+	tw_bg.tween_interval(1.0)
+	tw_bg.tween_property(banner, "color:a", 0.0, 0.35)
+	tw_bg.tween_callback(banner.queue_free)
 
-	# ── Cinematic letterbox bars (top + bottom) ──
-	var bar_h := 32.0
-	for y_pos in [0.0, vp.y - bar_h]:
-		var bar := ColorRect.new()
-		bar.position      = Vector2(0, y_pos)
-		bar.size          = Vector2(vp.x, bar_h)
-		bar.color         = Color(0.0, 0.0, 0.0, 0.0)
-		bar.mouse_filter  = Control.MOUSE_FILTER_IGNORE
-		bar.z_index       = 22
-		ui.add_child(bar)
-		var tw := bar.create_tween()
-		tw.tween_property(bar, "color:a", 0.9, 0.18).set_trans(Tween.TRANS_QUAD)
-		tw.tween_interval(1.2)
-		tw.tween_property(bar, "color:a", 0.0, 0.35)
-		tw.tween_callback(bar.queue_free)
+	# ── Thin red accent lines (top & bottom of banner) ──
+	for offset_y in [banner_y, banner_y + banner_h - 1.0]:
+		var line := ColorRect.new()
+		line.position      = Vector2(0, offset_y)
+		line.size          = Vector2(vp.x, 1.0)
+		line.color         = Color(1.0, 0.12, 0.22, 0.0)
+		line.mouse_filter  = Control.MOUSE_FILTER_IGNORE
+		line.z_index       = 23
+		ui.add_child(line)
+		var tw_l := line.create_tween()
+		tw_l.tween_property(line, "color:a", 0.8, 0.15)
+		tw_l.tween_interval(1.0)
+		tw_l.tween_property(line, "color:a", 0.0, 0.35)
+		tw_l.tween_callback(line.queue_free)
 
-	# ── Red accent lines sweep from edges to center ──
-	var line_h := 2.0
-	# Left half sweeps in from off-screen left
-	var line_l := ColorRect.new()
-	line_l.position      = Vector2(-vp.x * 0.5, mid_y - line_h * 0.5)
-	line_l.size          = Vector2(vp.x * 0.5, line_h)
-	line_l.color         = Color(1.0, 0.12, 0.22, 0.9)
-	line_l.mouse_filter  = Control.MOUSE_FILTER_IGNORE
-	line_l.z_index       = 23
-	ui.add_child(line_l)
-	var tw_ll := line_l.create_tween()
-	tw_ll.tween_property(line_l, "position:x", 0.0, 0.22).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	tw_ll.tween_interval(1.0)
-	tw_ll.tween_property(line_l, "color:a", 0.0, 0.35)
-	tw_ll.tween_callback(line_l.queue_free)
-	# Right half sweeps in from off-screen right
-	var line_r := ColorRect.new()
-	line_r.position      = Vector2(vp.x, mid_y - line_h * 0.5)
-	line_r.size          = Vector2(vp.x * 0.5, line_h)
-	line_r.color         = Color(1.0, 0.12, 0.22, 0.9)
-	line_r.mouse_filter  = Control.MOUSE_FILTER_IGNORE
-	line_r.z_index       = 23
-	ui.add_child(line_r)
-	var tw_lr := line_r.create_tween()
-	tw_lr.tween_property(line_r, "position:x", vp.x * 0.5, 0.22).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	tw_lr.tween_interval(1.0)
-	tw_lr.tween_property(line_r, "color:a", 0.0, 0.35)
-	tw_lr.tween_callback(line_r.queue_free)
-
-	# ── "BOSS INCOMING" label — centered with proper pivot ──
+	# ── "BOSS INCOMING" label inside the banner ──
 	var warn_lbl := Label.new()
 	warn_lbl.text                 = "⚠  BOSS INCOMING  ⚠"
 	warn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	warn_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	warn_lbl.add_theme_font_size_override("font_size", 22)
+	warn_lbl.add_theme_font_size_override("font_size", 18)
 	warn_lbl.modulate             = Color(1.0, 0.15, 0.25, 0.0)
 	warn_lbl.mouse_filter         = Control.MOUSE_FILTER_IGNORE
 	warn_lbl.z_index              = 24
-	var lbl_w := 300.0
-	var lbl_h := 36.0
-	warn_lbl.size                 = Vector2(lbl_w, lbl_h)
-	warn_lbl.position             = Vector2((vp.x - lbl_w) * 0.5, mid_y - lbl_h * 0.5)
-	warn_lbl.pivot_offset         = Vector2(lbl_w * 0.5, lbl_h * 0.5)
-	warn_lbl.scale                = Vector2(1.6, 1.6)
+	warn_lbl.size                 = Vector2(vp.x, banner_h)
+	warn_lbl.position             = Vector2(0, banner_y)
+	warn_lbl.pivot_offset         = Vector2(vp.x * 0.5, banner_h * 0.5)
+	warn_lbl.scale                = Vector2(1.4, 1.4)
 	ui.add_child(warn_lbl)
 	var tw_lbl := warn_lbl.create_tween()
 	tw_lbl.set_parallel(true)
-	tw_lbl.tween_property(warn_lbl, "modulate:a", 1.0, 0.18)
-	tw_lbl.tween_property(warn_lbl, "scale", Vector2(1.0, 1.0), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw_lbl.tween_property(warn_lbl, "modulate:a", 1.0, 0.15)
+	tw_lbl.tween_property(warn_lbl, "scale", Vector2(1.0, 1.0), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw_lbl.set_parallel(false)
 	tw_lbl.tween_interval(0.8)
-	tw_lbl.tween_property(warn_lbl, "modulate:a", 0.0, 0.4)
+	tw_lbl.tween_property(warn_lbl, "modulate:a", 0.0, 0.35)
 	tw_lbl.tween_callback(warn_lbl.queue_free)
 
 # ── Screen Flashes ────────────────────────────────────────────────────────────
@@ -1680,8 +1719,8 @@ func _add_meta_shop_button() -> void:
 		return
 	var btn := Button.new()
 	btn.name = "MetaShopBtn"
-	btn.text = "⚡  UPGRADES"
-	btn.add_theme_font_size_override("font_size", 16)
+	btn.text = "UPGRADES"
+	_style_go_button(btn, Color(0.6, 0.35, 0.85))
 	vbox.add_child(btn)
 	vbox.move_child(btn, restart_btn.get_index())
 	btn.process_mode = Node.PROCESS_MODE_ALWAYS
